@@ -1,3 +1,5 @@
 /target
 .ropeproject
 /tools/program.nvb
+/tools/program_asm.nvb
+nilvm

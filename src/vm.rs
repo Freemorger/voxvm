@@ -36,23 +36,37 @@ impl VM {
     }
 
     pub fn run(&mut self) {
-        while (self.ip < self.memory.len()) {
+        while (self.ip < self.memory.capacity()) {
             let opcode = self.memory[self.ip];
+            //println!("DBG: cur opcode: {}", self.ip);
             match opcode {
                 0x0 => break, // halt
                 0x1 => self.op_ncall(),
                 0x10 => self.op_uload(),
                 0x11 => self.op_uadd(),
+                0x12 => self.op_umul(),
+                0x13 => self.op_usub(),
                 // 20s for signed values
                 // 30s for floats
                 0x40 => self.op_jmp(),
+                0x41 => self.op_jz(),
                 _ => panic!("Unknown operation code: {}", opcode),
             }
+        }
+        if (self.ip >= self.memory.capacity()) {
+            panic!(
+                "CRITICAL: Instruction overflow! VM Memory capacity: {}, latest opcode: {}.
+                \n Consider running VM with more init ram using
+                --init-ram=RAM_VALUE",
+                self.memory.capacity(),
+                self.ip
+            );
         }
     }
 
     fn op_ncall(&mut self) {
-        let ncall_num: u8 = self.memory[(self.ip + 1) as usize];
+        // 0x1, size: different
+        let ncall_num: u16 = args_to_u16(&self.memory[(self.ip + 1)..(self.ip + 3)]);
         match ncall_num {
             0x1 => self.ncall_println(),
             _ => panic!("Unknown ncall code: {}", ncall_num),
@@ -60,6 +74,7 @@ impl VM {
     }
 
     fn op_uload(&mut self) {
+        // 0x10, size: 10
         let register_ind: u8 = self.memory[(self.ip + 1) as usize];
         let value: u64 = args_to_u64(&self.memory[(self.ip + 2)..(self.ip + 10)]);
 
@@ -69,6 +84,7 @@ impl VM {
     }
 
     fn op_uadd(&mut self) {
+        // 0x11, size: 3
         let in_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
         let toadd_reg_ind: u8 = self.memory[(self.ip + 2) as usize];
 
@@ -77,16 +93,56 @@ impl VM {
         return;
     }
 
+    fn op_umul(&mut self) {
+        // 0x12, size: 3
+        let in_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let toadd_reg_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        self.registers[in_reg_ind as usize] *= self.registers[toadd_reg_ind as usize];
+        self.ip += 3;
+        return;
+    }
+
+    fn op_usub(&mut self) {
+        // 0x13, size: 3
+        let in_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let toadd_reg_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        self.registers[in_reg_ind as usize] -= self.registers[toadd_reg_ind as usize];
+        if (self.registers[in_reg_ind as usize] == 0) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[1] = 0;
+        }
+        self.ip += 3;
+        return;
+    }
+
     fn op_jmp(&mut self) {
+        // 0x40, size: 9
         let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
         self.ip = target_addr as usize;
         return;
     }
 
+    fn op_jz(&mut self) {
+        // 0x41, size: 9
+        //println!("DBG: ZF = {}", self.flags[1]);
+        if (self.flags[1] != 0) {
+            let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
+            self.ip = target_addr as usize;
+            return;
+        } else {
+            self.ip += 9;
+            return;
+        }
+    }
+
     fn ncall_println(&mut self) {
-        let src_r_num: u8 = self.memory[(self.ip + 2)];
+        // size: 4
+        let src_r_num: u8 = self.memory[(self.ip + 3)];
         println!("{}", self.registers[src_r_num as usize]);
-        self.ip += 3;
+        self.ip += 4;
         return;
     }
 }
@@ -94,5 +150,11 @@ impl VM {
 pub fn args_to_u64(args: &[u8]) -> u64 {
     let bytes: [u8; 8] = args.try_into().expect(&format!("Bytes convertion error!"));
     let value: u64 = u64::from_be_bytes(bytes);
+    value
+}
+
+pub fn args_to_u16(args: &[u8]) -> u16 {
+    let bytes: [u8; 2] = args.try_into().expect(&format!("Bytes convertion error!"));
+    let value: u16 = u16::from_be_bytes(bytes);
     value
 }
