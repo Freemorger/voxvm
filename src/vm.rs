@@ -8,8 +8,10 @@ pub struct VM {
     memory: Vec<u8>, // dividing by each bytes, then can be grouped
     heap_ptr: usize,
     nativecalls: std::collections::HashMap<u32, NativeFn>,
+    running: bool,
 }
 type NativeFn = fn(&mut VM, &[u64]) -> Result;
+type InstructionHandler = fn(&mut VM);
 
 impl VM {
     pub fn new(heap_size: usize) -> VM {
@@ -20,6 +22,7 @@ impl VM {
             memory: vec![0; heap_size],
             heap_ptr: 0,
             nativecalls: HashMap::new(),
+            running: true,
         }
     }
     pub fn load_nvb(&mut self, input_file_name: &str) {
@@ -36,22 +39,10 @@ impl VM {
     }
 
     pub fn run(&mut self) {
-        while (self.ip < self.memory.capacity()) {
+        while (self.ip < self.memory.capacity()) && (self.running) {
             let opcode = self.memory[self.ip];
             //println!("DBG: cur opcode: {}", self.ip);
-            match opcode {
-                0x0 => break, // halt
-                0x1 => self.op_ncall(),
-                0x10 => self.op_uload(),
-                0x11 => self.op_uadd(),
-                0x12 => self.op_umul(),
-                0x13 => self.op_usub(),
-                // 20s for signed values
-                // 30s for floats
-                0x40 => self.op_jmp(),
-                0x41 => self.op_jz(),
-                _ => panic!("Unknown operation code: {}", opcode),
-            }
+            Self::OPERATIONS[opcode as usize](self);
         }
         if (self.ip >= self.memory.capacity()) {
             panic!(
@@ -62,6 +53,28 @@ impl VM {
                 self.ip
             );
         }
+    }
+
+    const OPERATIONS: [InstructionHandler; 256] = {
+        let mut handlers = [Self::op_unimplemented as InstructionHandler; 256];
+        handlers[0xFF] = Self::op_halt as InstructionHandler;
+        handlers[0x01] = Self::op_ncall as InstructionHandler;
+        handlers[0x10] = Self::op_uload as InstructionHandler;
+        handlers[0x11] = Self::op_uadd as InstructionHandler;
+        handlers[0x12] = Self::op_umul as InstructionHandler;
+        handlers[0x13] = Self::op_usub as InstructionHandler;
+        handlers[0x40] = Self::op_jmp as InstructionHandler;
+        handlers[0x41] = Self::op_jz as InstructionHandler;
+        // ...
+        handlers
+    };
+
+    fn op_unimplemented(&mut self) {
+        panic!("CRITICAL: Unknown operation code at {}", self.ip);
+    }
+
+    fn op_halt(&mut self) {
+        self.running = false;
     }
 
     fn op_ncall(&mut self) {

@@ -2,4 +2,9 @@ uload r0 15
 uload r1 5
 umul r0 r1
 ncall 1 r0
+label test
+    uload r2 10
+    uadd r0 r2
+    ncall 1 r0
+    goto test
 halt
