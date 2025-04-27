@@ -63,14 +63,22 @@ impl VM {
         handlers[0x11] = Self::op_uadd as InstructionHandler;
         handlers[0x12] = Self::op_umul as InstructionHandler;
         handlers[0x13] = Self::op_usub as InstructionHandler;
+        handlers[0x14] = Self::op_udiv as InstructionHandler;
+        handlers[0x15] = Self::op_urem as InstructionHandler;
+        handlers[0x16] = Self::op_ucmp as InstructionHandler;
         handlers[0x40] = Self::op_jmp as InstructionHandler;
         handlers[0x41] = Self::op_jz as InstructionHandler;
+        handlers[0x42] = Self::op_jn as InstructionHandler;
+        handlers[0x43] = Self::op_jg as InstructionHandler;
         // ...
         handlers
     };
 
     fn op_unimplemented(&mut self) {
-        panic!("CRITICAL: Unknown operation code at {}", self.ip);
+        panic!(
+            "CRITICAL: Unknown operation code at {}: {}",
+            self.ip, self.memory[self.ip]
+        );
     }
 
     fn op_halt(&mut self) {
@@ -131,6 +139,61 @@ impl VM {
         return;
     }
 
+    fn op_udiv(&mut self) {
+        // 0x14, size: 4
+        let reg_out: u8 = self.memory[(self.ip + 1)];
+        let reg_1: u8 = self.memory[(self.ip + 2)];
+        let reg_2: u8 = self.memory[(self.ip + 3)];
+
+        self.registers[reg_out as usize] =
+            self.registers[reg_1 as usize] / self.registers[reg_2 as usize];
+        if (self.registers[(self.ip + 1)] == 0) {
+            self.flags[1] = 1; // Zero flag
+        } else {
+            self.flags[1] = 0;
+        }
+        self.ip += 4;
+    }
+
+    fn op_urem(&mut self) {
+        // 0x15, size: 4
+        let reg_dest: u8 = self.memory[(self.ip + 1)];
+        let reg_1: u8 = self.memory[(self.ip + 2)];
+        let reg_2: u8 = self.memory[(self.ip + 3)];
+
+        self.registers[reg_dest as usize] =
+            self.registers[reg_1 as usize] % self.registers[reg_2 as usize];
+        if (self.registers[reg_dest as usize] == 0) {
+            self.flags[1] = 1; // Zero flag
+        } else {
+            self.flags[1] = 0;
+        }
+        self.ip += 4;
+    }
+
+    fn op_ucmp(&mut self) {
+        // 0x16, size: 3
+        let reg_dest: u8 = self.memory[(self.ip + 1)];
+        let reg_src: u8 = self.memory[(self.ip + 2)];
+
+        let isLess: bool = (self.registers[reg_dest as usize] < self.registers[reg_src as usize]);
+        let isEqu: bool = (self.registers[reg_dest as usize] == self.registers[reg_src as usize]);
+
+        if (isLess) {
+            self.flags[2] = 1;
+        } else {
+            self.flags[2] = 0;
+        }
+
+        if (isEqu) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+    }
+
     fn op_jmp(&mut self) {
         // 0x40, size: 9
         let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
@@ -142,6 +205,31 @@ impl VM {
         // 0x41, size: 9
         //println!("DBG: ZF = {}", self.flags[1]);
         if (self.flags[1] != 0) {
+            let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
+            self.ip = target_addr as usize;
+            return;
+        } else {
+            self.ip += 9;
+            return;
+        }
+    }
+
+    fn op_jn(&mut self) {
+        // 0x42, size: 9
+        //println!("DBG: NF = {}", self.flags[2]);
+        if (self.flags[2] != 0) {
+            let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
+            self.ip = target_addr as usize;
+            return;
+        } else {
+            self.ip += 9;
+            return;
+        }
+    }
+
+    fn op_jg(&mut self) {
+        // 0x43, size: 9
+        if (self.flags[1] == 0) && (self.flags[2] == 0) {
             let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
             self.ip = target_addr as usize;
             return;

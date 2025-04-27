@@ -1,10 +1,12 @@
-uload r0 15
-uload r1 5
-umul r0 r1
-ncall 1 r0
-label test
-    uload r2 10
-    uadd r0 r2
-    ncall 1 r0
-    goto test
+uload r1 0
+uload r2 10
+uload r3 1
+label loop
+    ncall 1 r1
+    uadd r1 r3
+    ucmp r1 r2
+    jz 0x3a
+    goto loop
+
+label exit
 halt

@@ -19,8 +19,13 @@ instr_formats = {
     "uadd": [0x11, 3, 1, 1],
     "umul": [0x12, 3, 1, 1],
     "usub": [0x13, 3, 1, 1],
+    "udiv": [0x14, 4, 1, 1, 1],
+    "urem": [0x15, 4, 1, 1, 1],
+    "ucmp": [0x16, 3, 1, 1],
     "jmp": [0x40, 9, 8],
-    "jz": [0x41, 9, 8]
+    "jz": [0x41, 9, 8],
+    "jn": [0x42, 9, 8],
+    "jg": [0x43, 9, 8],
 }
 
 labels = {"": 0}
@@ -97,13 +102,13 @@ for line in lines:
             starting = sum(instr[2:(i+2)]) + 1
             instr_b[starting:(starting + 1 + 1)] = int(arg[1:]).to_bytes(1, "big")
         else:
+            arglen = instr[2 + i]
+            starting = sum(instr[2:(i+2)]) + 1
             try:
-                arglen = instr[2 + i]
-                starting = sum(instr[2:(i+2)]) + 1
                 instr_b[starting:(starting + arglen + 1)] = int(arg).to_bytes(arglen, "big")
-            #except ValueError:
-                #print(lexems[1], " is not a number.")
-            finally: pass
+            except ValueError:
+                instr_b[starting:(starting + arglen + 1)] = int(arg, 16).to_bytes(arglen, "big")
+
 
     print(instr_b)
     output_file.write(instr_b)
