@@ -68,8 +68,10 @@ impl VM {
         handlers[0x16] = Self::op_ucmp as InstructionHandler;
         handlers[0x40] = Self::op_jmp as InstructionHandler;
         handlers[0x41] = Self::op_jz as InstructionHandler;
-        handlers[0x42] = Self::op_jn as InstructionHandler;
+        handlers[0x42] = Self::op_jl as InstructionHandler;
         handlers[0x43] = Self::op_jg as InstructionHandler;
+        handlers[0x44] = Self::op_jge as InstructionHandler;
+        handlers[0x45] = Self::op_jle as InstructionHandler;
         // ...
         handlers
     };
@@ -214,7 +216,7 @@ impl VM {
         }
     }
 
-    fn op_jn(&mut self) {
+    fn op_jl(&mut self) {
         // 0x42, size: 9
         //println!("DBG: NF = {}", self.flags[2]);
         if (self.flags[2] != 0) {
@@ -230,6 +232,30 @@ impl VM {
     fn op_jg(&mut self) {
         // 0x43, size: 9
         if (self.flags[1] == 0) && (self.flags[2] == 0) {
+            let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
+            self.ip = target_addr as usize;
+            return;
+        } else {
+            self.ip += 9;
+            return;
+        }
+    }
+
+    fn op_jge(&mut self) {
+        // 0x44, size: 9
+        if (self.flags[2] == 0) {
+            let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
+            self.ip = target_addr as usize;
+            return;
+        } else {
+            self.ip += 9;
+            return;
+        }
+    }
+
+    fn op_jle(&mut self) {
+        // 0x45, size: 9
+        if (self.flags[2] == 1) || (self.flags[1] == 1) {
             let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
             self.ip = target_addr as usize;
             return;

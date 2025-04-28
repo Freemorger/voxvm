@@ -1,4 +1,11 @@
-import re
+
+def ishex(s):
+    try:
+        int(s, 16)
+        return True
+    except ValueError:
+        return False
+
 
 INPUT_FILE_NAME = "input.nvs"
 OUTPUT_FILE_NAME = "program_asm.nvb"
@@ -24,16 +31,25 @@ instr_formats = {
     "ucmp": [0x16, 3, 1, 1],
     "jmp": [0x40, 9, 8],
     "jz": [0x41, 9, 8],
-    "jn": [0x42, 9, 8],
+    "jl": [0x42, 9, 8],
     "jg": [0x43, 9, 8],
+    "jge": [0x44, 9, 8],
+    "jle": [0x45, 9, 8]
 }
 
 labels = {"": 0}
+halt_ptr = 0x0
 def save_label(line) -> None:
     line = line.strip().split()
     labelname = line[1]
-    print("saving label:", labelname)
-    labels[labelname] = addr_ctr
+    if (labelname.isdigit()): #or (ishex(labelname)):
+        print("Labelname should not be only numbers!")
+    else:
+        print("saving label:", labelname)
+        labels[labelname] = addr_ctr
+        return
+
+
 
 def goto(line):
     line = line.strip().split()
@@ -55,7 +71,7 @@ def goto(line):
             return bytearray()
 
     else:
-        print("problenms")
+        print("problems")
 
 
 
@@ -65,7 +81,35 @@ special_instr = {
 }
 
 
+#first stage
+input_file.seek(0)
+lines1 = input_file.readlines()
+for line in lines1:
+    lexems = line.strip().split()
+    if not lexems:
+        continue
+    print("FIRST: ", lexems)
+    if (lexems[0] == "label"):
+        save_label(line)
+        continue
+    if (lexems[0] == "goto"):
+        addr_ctr += 9
+        continue
+    if (lexems[0] == "halt"):
+        halt_ptr = addr_ctr
+        break
 
+    instr = instr_formats.get(lexems[0])
+    if (instr == None):
+        print("unknown instr: ", lexems[0])
+        continue
+    addr_ctr += instr[1]
+
+
+
+#assemble
+addr_ctr = 0
+input_file.seek(0)
 lines = input_file.readlines()
 for line in lines:
     lexems = line.strip().split()
@@ -94,10 +138,31 @@ for line in lines:
     instr_b = bytearray(instr_len)
     instr_b[0] = instr[0]
 
+    if (instr[0] >= 0x40) and (instr[0] < 0x50):
+        tgt_addr = 0x0
+        try:
+            tgt_addr = int(lexems[1], 16)
+        except ValueError:
+            tgt_addr = labels.get(lexems[1])
+            if (tgt_addr == None):
+                print("Can't get label name", lexems[1])
+                exit(1)
+        finally:
+            print("DBG tgt_addr: ", tgt_addr)
+            instr_b[1:10] = tgt_addr.to_bytes(8, "big")
+            print(instr_b)
+            output_file.write(instr_b)
+            addr_ctr += len(instr_b)
+            print()
+            continue
+
     if (instr_len < 2):
         output_file.write(instr_b)
         continue
     for i, arg in enumerate(lexems[1:]):
+        if ("#" in arg):
+            break
+
         if ("r" in arg):
             starting = sum(instr[2:(i+2)]) + 1
             instr_b[starting:(starting + 1 + 1)] = int(arg[1:]).to_bytes(1, "big")
