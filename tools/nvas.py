@@ -29,6 +29,9 @@ instr_formats = {
     "udiv": [0x14, 4, 1, 1, 1],
     "urem": [0x15, 4, 1, 1, 1],
     "ucmp": [0x16, 3, 1, 1],
+    "iload": [0x20, 10, 1, 8],
+    "iadd": [0x21, 3, 1, 1],
+    "imul": [0x22, 3, 1, 1],
     "jmp": [0x40, 9, 8],
     "jz": [0x41, 9, 8],
     "jl": [0x42, 9, 8],
@@ -167,12 +170,16 @@ for line in lines:
             starting = sum(instr[2:(i+2)]) + 1
             instr_b[starting:(starting + 1 + 1)] = int(arg[1:]).to_bytes(1, "big")
         else:
+            isSigned: bool = False
+            if (instr[0] >= 0x20) and (instr[0] < 0x30):
+                isSigned = True
+            print("DBG: isSigned = ", isSigned)
             arglen = instr[2 + i]
             starting = sum(instr[2:(i+2)]) + 1
             try:
-                instr_b[starting:(starting + arglen + 1)] = int(arg).to_bytes(arglen, "big")
+                instr_b[starting:(starting + arglen + 1)] = int(arg).to_bytes(arglen, "big", signed=isSigned)
             except ValueError:
-                instr_b[starting:(starting + arglen + 1)] = int(arg, 16).to_bytes(arglen, "big")
+                instr_b[starting:(starting + arglen + 1)] = int(arg, 16).to_bytes(arglen, "big", signed=isSigned)
 
 
     print(instr_b)

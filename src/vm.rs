@@ -1,13 +1,22 @@
 use std::{collections::HashMap, fmt::Result, fs};
 
+#[derive(Debug, Clone, Copy)]
+pub enum RegTypes {
+    uint64,
+    int64,
+    float64,
+    address,
+}
+
 #[derive(Debug)]
 pub struct VM {
     registers: [u64; 32],
-    flags: [u8; 3], // of, zf, nf
+    reg_types: [RegTypes; 32],
+    flags: [u8; 4], // of, zf, nf, cf
     ip: usize,
     memory: Vec<u8>, // dividing by each bytes, then can be grouped
     heap_ptr: usize,
-    nativecalls: std::collections::HashMap<u32, NativeFn>,
+    nativecalls: std::collections::HashMap<u16, NativeFn>,
     running: bool,
 }
 type NativeFn = fn(&mut VM, &[u64]) -> Result;
@@ -17,7 +26,8 @@ impl VM {
     pub fn new(heap_size: usize) -> VM {
         VM {
             registers: [0; 32],
-            flags: [0; 3],
+            reg_types: [RegTypes::uint64; 32],
+            flags: [0; 4],
             ip: 0x0,
             memory: vec![0; heap_size],
             heap_ptr: 0,
@@ -66,6 +76,9 @@ impl VM {
         handlers[0x14] = Self::op_udiv as InstructionHandler;
         handlers[0x15] = Self::op_urem as InstructionHandler;
         handlers[0x16] = Self::op_ucmp as InstructionHandler;
+        handlers[0x20] = Self::op_iload as InstructionHandler;
+        handlers[0x21] = Self::op_iadd as InstructionHandler;
+        handlers[0x22] = Self::op_imul as InstructionHandler;
         handlers[0x40] = Self::op_jmp as InstructionHandler;
         handlers[0x41] = Self::op_jz as InstructionHandler;
         handlers[0x42] = Self::op_jl as InstructionHandler;
@@ -102,6 +115,7 @@ impl VM {
         let value: u64 = args_to_u64(&self.memory[(self.ip + 2)..(self.ip + 10)]);
 
         self.registers[register_ind as usize] = value;
+        self.reg_types[register_ind as usize] = RegTypes::uint64;
         self.ip += 10;
         return;
     }
@@ -146,6 +160,9 @@ impl VM {
         let reg_out: u8 = self.memory[(self.ip + 1)];
         let reg_1: u8 = self.memory[(self.ip + 2)];
         let reg_2: u8 = self.memory[(self.ip + 3)];
+        if (self.registers[reg_2 as usize] == 0) {
+            panic!("DIVZERO Exception at addr {}", self.ip);
+        }
 
         self.registers[reg_out as usize] =
             self.registers[reg_1 as usize] / self.registers[reg_2 as usize];
@@ -194,6 +211,44 @@ impl VM {
         }
 
         self.ip += 3;
+    }
+
+    fn op_iload(&mut self) {
+        //0x20, size: 10
+        let register_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let value: i64 = args_to_i64(&self.memory[(self.ip + 2)..(self.ip + 10)]);
+
+        self.registers[register_ind as usize] = value as u64;
+        self.reg_types[register_ind as usize] = RegTypes::int64;
+
+        self.ip += 10;
+        return;
+    }
+
+    fn op_iadd(&mut self) {
+        //0x21, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res: i64 = (self.registers[dest_r_ind as usize] as i64)
+            + (self.registers[src_r_ind as usize] as i64);
+        self.registers[dest_r_ind as usize] = res as u64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_imul(&mut self) {
+        //0x22, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res: i64 = (self.registers[dest_r_ind as usize] as i64)
+            * (self.registers[src_r_ind as usize] as i64);
+        self.registers[dest_r_ind as usize] = res as u64;
+
+        self.ip += 3;
+        return;
     }
 
     fn op_jmp(&mut self) {
@@ -268,7 +323,20 @@ impl VM {
     fn ncall_println(&mut self) {
         // size: 4
         let src_r_num: u8 = self.memory[(self.ip + 3)];
-        println!("{}", self.registers[src_r_num as usize]);
+        match self.reg_types[src_r_num as usize] {
+            RegTypes::uint64 => {
+                println!("{}", self.registers[src_r_num as usize]);
+            }
+            RegTypes::int64 => {
+                println!("{}", self.registers[src_r_num as usize] as i64);
+            }
+            RegTypes::float64 => {
+                println!("{}", f64::from_bits(self.registers[src_r_num as usize]));
+            }
+            RegTypes::address => {
+                // TODO: Implement printing data from addr
+            }
+        }
         self.ip += 4;
         return;
     }
@@ -283,5 +351,11 @@ pub fn args_to_u64(args: &[u8]) -> u64 {
 pub fn args_to_u16(args: &[u8]) -> u16 {
     let bytes: [u8; 2] = args.try_into().expect(&format!("Bytes convertion error!"));
     let value: u16 = u16::from_be_bytes(bytes);
+    value
+}
+
+pub fn args_to_i64(args: &[u8]) -> i64 {
+    let bytes: [u8; 8] = args.try_into().expect(&format!("Bytes convertion error!"));
+    let value: i64 = i64::from_be_bytes(bytes);
     value
 }

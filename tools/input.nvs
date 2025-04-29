@@ -1,13 +1,8 @@
-uload r1 10
-uload r2 20
-uload r3 1
-label loop
-    ucmp r1 r2
-    jge exit
-    uadd r1 r3
-    ncall 1 r1
-    goto loop
-
-label exit
-ncall 1 r1
+iload r0 -5
+iload r1 6
+iadd r0 r1
+ncall 1 r0
+iload r2 -20
+imul r0 r2
+ncall 1 r0
 halt

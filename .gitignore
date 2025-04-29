@@ -3,4 +3,5 @@
 /tools/program.nvb
 /tools/program_asm.nvb
 nilvm
+voxvm
 fastrunas.sh
