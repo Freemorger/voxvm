@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Result, fs};
+use std::{collections::HashMap, fmt::Result, fs, thread::panicking};
 
 #[derive(Debug, Clone, Copy)]
 pub enum RegTypes {
@@ -79,6 +79,17 @@ impl VM {
         handlers[0x20] = Self::op_iload as InstructionHandler;
         handlers[0x21] = Self::op_iadd as InstructionHandler;
         handlers[0x22] = Self::op_imul as InstructionHandler;
+        handlers[0x23] = Self::op_isub as InstructionHandler;
+        handlers[0x24] = Self::op_idiv as InstructionHandler;
+        handlers[0x25] = Self::op_irem as InstructionHandler;
+        handlers[0x26] = Self::op_icmp as InstructionHandler;
+        handlers[0x30] = Self::op_fload as InstructionHandler;
+        handlers[0x31] = Self::op_fadd as InstructionHandler;
+        handlers[0x32] = Self::op_fmul as InstructionHandler;
+        handlers[0x33] = Self::op_fsub as InstructionHandler;
+        handlers[0x34] = Self::op_fdiv as InstructionHandler;
+        handlers[0x35] = Self::op_frem as InstructionHandler;
+        handlers[0x36] = Self::op_fcmp as InstructionHandler;
         handlers[0x40] = Self::op_jmp as InstructionHandler;
         handlers[0x41] = Self::op_jz as InstructionHandler;
         handlers[0x42] = Self::op_jl as InstructionHandler;
@@ -166,11 +177,9 @@ impl VM {
 
         self.registers[reg_out as usize] =
             self.registers[reg_1 as usize] / self.registers[reg_2 as usize];
-        if (self.registers[(self.ip + 1)] == 0) {
-            self.flags[1] = 1; // Zero flag
-        } else {
-            self.flags[1] = 0;
-        }
+
+        self.reg_types[reg_out as usize] = RegTypes::uint64;
+
         self.ip += 4;
     }
 
@@ -182,11 +191,9 @@ impl VM {
 
         self.registers[reg_dest as usize] =
             self.registers[reg_1 as usize] % self.registers[reg_2 as usize];
-        if (self.registers[reg_dest as usize] == 0) {
-            self.flags[1] = 1; // Zero flag
-        } else {
-            self.flags[1] = 0;
-        }
+
+        self.reg_types[reg_dest as usize] = RegTypes::uint64;
+
         self.ip += 4;
     }
 
@@ -246,6 +253,189 @@ impl VM {
         let res: i64 = (self.registers[dest_r_ind as usize] as i64)
             * (self.registers[src_r_ind as usize] as i64);
         self.registers[dest_r_ind as usize] = res as u64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_isub(&mut self) {
+        //0x23, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res: i64 = (self.registers[dest_r_ind as usize] as i64)
+            - (self.registers[src_r_ind as usize] as i64);
+        self.registers[dest_r_ind as usize] = res as u64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_idiv(&mut self) {
+        //0x24, size: 4
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let reg_1: u8 = self.memory[(self.ip + 2) as usize];
+        let reg_2: u8 = self.memory[(self.ip + 3) as usize];
+
+        if (self.registers[reg_2 as usize] == 0) {
+            panic!("DIVZERO exception at {}", self.ip);
+        }
+        let res: i64 =
+            (self.registers[reg_1 as usize] as i64) / (self.registers[reg_2 as usize] as i64);
+        self.registers[dest_r_ind as usize] = res as u64;
+
+        self.reg_types[dest_r_ind as usize] = RegTypes::int64;
+
+        self.ip += 4;
+        return;
+    }
+
+    fn op_irem(&mut self) {
+        //0x25, size: 4
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let reg_1: u8 = self.memory[(self.ip + 2) as usize];
+        let reg_2: u8 = self.memory[(self.ip + 3) as usize];
+
+        if (self.registers[reg_2 as usize] == 0) {
+            panic!("DIVZERO exception at {}", self.ip);
+        }
+        let res: i64 =
+            (self.registers[reg_1 as usize] as i64) % (self.registers[reg_2 as usize] as i64);
+        self.registers[dest_r_ind as usize] = res as u64;
+
+        self.reg_types[dest_r_ind as usize] = RegTypes::int64;
+
+        self.ip += 4;
+        return;
+    }
+
+    fn op_icmp(&mut self) {
+        // 0x26, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let isLess: bool = ((self.registers[dest_r_ind as usize] as i64)
+            < (self.registers[src_r_ind as usize] as i64));
+        let isEqu: bool = ((self.registers[dest_r_ind as usize] as i64)
+            == (self.registers[src_r_ind as usize] as i64));
+
+        if (isLess) {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+        if (isEqu) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fload(&mut self) {
+        // 0x30, size: 10
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let float_val: f64 =
+            args_to_f64(&self.memory[((self.ip + 2) as usize)..((self.ip + 10) as usize)]);
+
+        self.registers[dest_r_ind as usize] = float_val.to_bits();
+        self.reg_types[dest_r_ind as usize] = RegTypes::float64;
+
+        self.ip += 10;
+        return;
+    }
+
+    fn op_fadd(&mut self) {
+        // 0x31, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let result: f64 = f64::from_bits(self.registers[dest_r_ind as usize])
+            + f64::from_bits(self.registers[src_r_ind as usize]);
+        self.registers[dest_r_ind as usize] = result.to_bits();
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fmul(&mut self) {
+        // 0x32, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let result: f64 = f64::from_bits(self.registers[dest_r_ind as usize])
+            * f64::from_bits(self.registers[src_r_ind as usize]);
+        self.registers[dest_r_ind as usize] = result.to_bits();
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fsub(&mut self) {
+        // 0x33, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let result: f64 = f64::from_bits(self.registers[dest_r_ind as usize])
+            - f64::from_bits(self.registers[src_r_ind as usize]);
+        self.registers[dest_r_ind as usize] = result.to_bits();
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fdiv(&mut self) {
+        // 0x34, size: 4
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let reg_1_ind: u8 = self.memory[(self.ip + 2) as usize];
+        let reg_2_ind: u8 = self.memory[(self.ip + 3) as usize];
+
+        let result: f64 = f64::from_bits(self.registers[reg_1_ind as usize])
+            / f64::from_bits(self.registers[reg_2_ind as usize]);
+        self.registers[dest_r_ind as usize] = result.to_bits();
+        self.reg_types[dest_r_ind as usize] = RegTypes::float64;
+
+        self.ip += 4;
+        return;
+    }
+
+    fn op_frem(&mut self) {
+        // 0x35, size: 4
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let reg_1_ind: u8 = self.memory[(self.ip + 2) as usize];
+        let reg_2_ind: u8 = self.memory[(self.ip + 3) as usize];
+
+        let result: f64 = f64::from_bits(self.registers[reg_1_ind as usize])
+            % f64::from_bits(self.registers[reg_2_ind as usize]);
+        self.registers[dest_r_ind as usize] = result.to_bits();
+        self.reg_types[dest_r_ind as usize] = RegTypes::float64;
+
+        self.ip += 4;
+        return;
+    }
+
+    fn op_fcmp(&mut self) {
+        // 0x36, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let isLess: bool = ((f64::from_bits(self.registers[dest_r_ind as usize]))
+            < (f64::from_bits(self.registers[src_r_ind as usize])));
+        let isEqu: bool = ((f64::from_bits(self.registers[dest_r_ind as usize]))
+            == (f64::from_bits(self.registers[src_r_ind as usize])));
+
+        if (isLess) {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+        if (isEqu) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[1] = 0;
+        }
 
         self.ip += 3;
         return;
@@ -331,7 +521,8 @@ impl VM {
                 println!("{}", self.registers[src_r_num as usize] as i64);
             }
             RegTypes::float64 => {
-                println!("{}", f64::from_bits(self.registers[src_r_num as usize]));
+                let val: f64 = f64::from_bits(self.registers[src_r_num as usize]);
+                println!("{}", format_float(val));
             }
             RegTypes::address => {
                 // TODO: Implement printing data from addr
@@ -358,4 +549,22 @@ pub fn args_to_i64(args: &[u8]) -> i64 {
     let bytes: [u8; 8] = args.try_into().expect(&format!("Bytes convertion error!"));
     let value: i64 = i64::from_be_bytes(bytes);
     value
+}
+
+pub fn args_to_f64(args: &[u8]) -> f64 {
+    let bytes: [u8; 8] = args
+        .try_into()
+        .expect(&format!("Bytes convertion error into f64!"));
+    let value: f64 = f64::from_be_bytes(bytes);
+    value
+}
+
+pub fn format_float(value: f64) -> String {
+    let s = format!("{:.12}", value);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    if (s.is_empty()) {
+        "0".to_string()
+    } else {
+        s.to_string()
+    }
 }

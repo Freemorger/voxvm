@@ -1,3 +1,4 @@
+import struct
 
 def ishex(s):
     try:
@@ -32,6 +33,17 @@ instr_formats = {
     "iload": [0x20, 10, 1, 8],
     "iadd": [0x21, 3, 1, 1],
     "imul": [0x22, 3, 1, 1],
+    "isub": [0x23, 3, 1, 1],
+    "idiv": [0x24, 4, 1, 1, 1],
+    "irem": [0x25, 4, 1, 1, 1],
+    "icmp": [0x26, 3, 1, 1],
+    "fload": [0x30, 10, 1, 8],
+    "fadd": [0x31, 3, 1, 1],
+    "fmul": [0x32, 3, 1, 1],
+    "fsub": [0x33, 3, 1, 1],
+    "fdiv": [0x34, 4, 1, 1, 1],
+    "frem": [0x35, 4, 1, 1, 1],
+    "fcmp": [0x36, 3, 1, 1],
     "jmp": [0x40, 9, 8],
     "jz": [0x41, 9, 8],
     "jl": [0x42, 9, 8],
@@ -169,6 +181,9 @@ for line in lines:
         if ("r" in arg):
             starting = sum(instr[2:(i+2)]) + 1
             instr_b[starting:(starting + 1 + 1)] = int(arg[1:]).to_bytes(1, "big")
+        elif ("." in arg):
+            starting = sum(instr[2:(i+2)]) + 1
+            instr_b[starting:(starting + 8 + 1)] = struct.pack(">d", float(arg))
         else:
             isSigned: bool = False
             if (instr[0] >= 0x20) and (instr[0] < 0x30):

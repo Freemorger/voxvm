@@ -1,2 +1,13 @@
 Simple Virutal machine using 64-bit registers, static typization, etc.
+Last implemntions + todos:
+| Thing | Implemted? |
+|-------|------------|
+| Uint64 | ✅ |
+| Int64 | ✅ |
+| f64 | ✅ |
+| type convs | 🔴 |
+| data segment | 🔴 |
+| arrays | 🔴 |
+| soon more.. | ... |
+
 Instruction actual info table: https://docs.google.com/spreadsheets/d/1bpkqAGjcDWKBDQTO2B2RmPHxcuN5EIkYm-DKRgUFVq8
