@@ -6,7 +6,7 @@ Last implemntions + todos:
 | int64 + ops           | ✅              |
 | float64 + ops         | ✅              |
 | jump ops, print, halt | ✅              |
-| type convs            | 🔴              |
+| type convs            | ✅              |
 | data segment          | 🔴              |
 | soon more..           | 🔴              |
 
