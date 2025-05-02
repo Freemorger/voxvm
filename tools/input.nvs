@@ -1,22 +1,31 @@
-fload r0 3.14
-fload r1 2.1
-fadd r0 r1
-ncall 1 r0  # should be 5.24
+fload r0 5.5
+ncall 1 r0
+ftou r0 r0
+ncall 1 r0 # should be 5 
 
-fload r1 2.5
-fmul r0 r1
-ncall 1 r0  # should be 13.1
+fload r1 -5.5
+ncall 1 r1
+ftoi r1 r1
+ncall 1 r1 # should be -5
 
-fload r1 2.0
-fdiv r0 r0 r1
-ncall 1 r0  # should be 6.55
+uload r2 4
+ncall 1 r2
+utoi r2 r2
+ncall 1 r2 # should be 4 
 
-fload r1 0.55
-fsub r0 r1
-ncall 1 r0  # should be 6.0
+iload r3 -8
+ncall 1 r3
+itou r3 r3
+ncall 1 r3 # should be 8
 
-fload r1 3.0
-frem r2 r0 r1
-ncall 1 r2  # should be 0.0
+uload r4 10
+ncall 1 r4
+utof r4 r4
+ncall 1 r4 # should be 10
+
+iload r5 -12
+ncall 1 r5
+itof r5 r5
+ncall 1 r5 # should be -12
 
 halt

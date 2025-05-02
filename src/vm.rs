@@ -18,6 +18,7 @@ pub struct VM {
     heap_ptr: usize,
     nativecalls: std::collections::HashMap<u16, NativeFn>,
     running: bool,
+    float_epsilon: f64,
 }
 type NativeFn = fn(&mut VM, &[u64]) -> Result;
 type InstructionHandler = fn(&mut VM);
@@ -33,6 +34,7 @@ impl VM {
             heap_ptr: 0,
             nativecalls: HashMap::new(),
             running: true,
+            float_epsilon: 1e-11,
         }
     }
     pub fn load_nvb(&mut self, input_file_name: &str) {
@@ -69,6 +71,7 @@ impl VM {
         let mut handlers = [Self::op_unimplemented as InstructionHandler; 256];
         handlers[0xFF] = Self::op_halt as InstructionHandler;
         handlers[0x01] = Self::op_ncall as InstructionHandler;
+        handlers[0x02] = Self::op_nop as InstructionHandler;
         handlers[0x10] = Self::op_uload as InstructionHandler;
         handlers[0x11] = Self::op_uadd as InstructionHandler;
         handlers[0x12] = Self::op_umul as InstructionHandler;
@@ -90,12 +93,19 @@ impl VM {
         handlers[0x34] = Self::op_fdiv as InstructionHandler;
         handlers[0x35] = Self::op_frem as InstructionHandler;
         handlers[0x36] = Self::op_fcmp as InstructionHandler;
+        handlers[0x37] = Self::op_fcmp_eps as InstructionHandler;
         handlers[0x40] = Self::op_jmp as InstructionHandler;
         handlers[0x41] = Self::op_jz as InstructionHandler;
         handlers[0x42] = Self::op_jl as InstructionHandler;
         handlers[0x43] = Self::op_jg as InstructionHandler;
         handlers[0x44] = Self::op_jge as InstructionHandler;
         handlers[0x45] = Self::op_jle as InstructionHandler;
+        handlers[0x50] = Self::op_utoi as InstructionHandler;
+        handlers[0x51] = Self::op_itou as InstructionHandler;
+        handlers[0x52] = Self::op_utof as InstructionHandler;
+        handlers[0x53] = Self::op_itof as InstructionHandler;
+        handlers[0x54] = Self::op_ftou as InstructionHandler;
+        handlers[0x55] = Self::op_ftoi as InstructionHandler;
         // ...
         handlers
     };
@@ -118,6 +128,11 @@ impl VM {
             0x1 => self.ncall_println(),
             _ => panic!("Unknown ncall code: {}", ncall_num),
         }
+    }
+
+    fn op_nop(&mut self) {
+        // 0x2, size: 1
+        return;
     }
 
     fn op_uload(&mut self) {
@@ -432,7 +447,34 @@ impl VM {
             self.flags[2] = 0;
         }
         if (isEqu) {
-            self.flags[1] = 1;
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fcmp_eps(&mut self) {
+        // 0x37, size: 3
+        let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let dest_val: f64 = f64::from_bits(self.registers[dest_r_ind as usize]);
+        let src_val: f64 = f64::from_bits(self.registers[src_r_ind as usize]);
+        let epsilon: f64 = self.float_epsilon;
+
+        let isLess: bool = ((src_val - dest_val) > (epsilon));
+        let isEqu: bool = ((dest_val - src_val).abs() < (epsilon));
+
+        if (isLess) {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+        if (isEqu) {
+            self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
@@ -450,7 +492,7 @@ impl VM {
 
     fn op_jz(&mut self) {
         // 0x41, size: 9
-        //println!("DBG: ZF = {}", self.flags[1]);
+        //println!("DBG: JZ, ZF = {}", self.flags[1]);
         if (self.flags[1] != 0) {
             let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
             self.ip = target_addr as usize;
@@ -510,6 +552,95 @@ impl VM {
         }
     }
 
+    fn op_utoi(&mut self) {
+        // 0x50, size: 3
+        // Transfers unsigned integer UINT64 into signed integer INT64
+        let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res_val: i64 = self.registers[r_src_ind as usize] as i64;
+        self.registers[r_dest_ind as usize] = res_val as u64;
+        self.reg_types[r_dest_ind as usize] = RegTypes::int64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_itou(&mut self) {
+        // 0x51, size: 3
+        // Transfers signed integer (int64) int unsigned integer (uint64)
+        let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res_val: u64 = (self.registers[r_src_ind as usize] as i64).abs() as u64;
+
+        self.registers[r_dest_ind as usize] = res_val;
+        self.reg_types[r_dest_ind as usize] = RegTypes::uint64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_utof(&mut self) {
+        // 0x52, size: 3
+        // Transfers unsigned integer UINT64 into floating point value float64
+        let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res_val: f64 = self.registers[r_src_ind as usize] as f64;
+
+        self.registers[r_dest_ind as usize] = res_val.to_bits();
+        self.reg_types[r_dest_ind as usize] = RegTypes::float64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_itof(&mut self) {
+        // 0x53, size: 3
+        // Transfers signed integer INT64 into floating point value float64
+        let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res_val: f64 = (self.registers[r_src_ind as usize] as i64) as f64;
+
+        self.registers[r_dest_ind as usize] = res_val.to_bits();
+        self.reg_types[r_dest_ind as usize] = RegTypes::float64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_ftou(&mut self) {
+        // 0x54, size: 3
+        // Transfers floating point value FLOAT64 into unsigned integer value UINT64
+        let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res_val: u64 = f64::from_bits(self.registers[r_src_ind as usize]) as u64;
+
+        self.registers[r_dest_ind as usize] = res_val;
+        self.reg_types[r_dest_ind as usize] = RegTypes::uint64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_ftoi(&mut self) {
+        // 0x55, size: 3
+        // Transfers floating point value FLOAT64 into signed integer INT64
+        let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
+        let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
+
+        let res_val: i64 = f64::from_bits(self.registers[r_src_ind as usize]) as i64;
+
+        self.registers[r_dest_ind as usize] = res_val as u64;
+        self.reg_types[r_dest_ind as usize] = RegTypes::int64;
+
+        self.ip += 3;
+        return;
+    }
+
     fn ncall_println(&mut self) {
         // size: 4
         let src_r_num: u8 = self.memory[(self.ip + 3)];
@@ -560,7 +691,7 @@ pub fn args_to_f64(args: &[u8]) -> f64 {
 }
 
 pub fn format_float(value: f64) -> String {
-    let s = format!("{:.12}", value);
+    let s = format!("{:.11}", value);
     let s = s.trim_end_matches('0').trim_end_matches('.');
     if (s.is_empty()) {
         "0".to_string()

@@ -23,6 +23,7 @@ instr_formats = {
     # Opcode, oplen, argslen
     "halt": [0xFF, 1, 0, 0],
     "ncall": [0x1, 4, 2, 1],
+    "nop": [0x2, 1, 0],
     "uload": [0x10, 10, 1, 8],
     "uadd": [0x11, 3, 1, 1],
     "umul": [0x12, 3, 1, 1],
@@ -44,12 +45,19 @@ instr_formats = {
     "fdiv": [0x34, 4, 1, 1, 1],
     "frem": [0x35, 4, 1, 1, 1],
     "fcmp": [0x36, 3, 1, 1],
+    "fcmp_eps": [0x37, 3, 1, 1],
     "jmp": [0x40, 9, 8],
     "jz": [0x41, 9, 8],
     "jl": [0x42, 9, 8],
     "jg": [0x43, 9, 8],
     "jge": [0x44, 9, 8],
-    "jle": [0x45, 9, 8]
+    "jle": [0x45, 9, 8],
+    "utoi": [0x50, 3, 1, 1],
+    "itou": [0x51, 3, 1, 1],
+    "utof": [0x52, 3, 1, 1],
+    "itof": [0x53, 3, 1, 1],
+    "ftou": [0x54, 3, 1, 1],
+    "ftoi": [0x55, 3, 1, 1],
 }
 
 labels = {"": 0}
@@ -155,27 +163,27 @@ for line in lines:
 
     if (instr[0] >= 0x40) and (instr[0] < 0x50):
         tgt_addr = 0x0
-        try:
-            tgt_addr = int(lexems[1], 16)
-        except ValueError:
-            tgt_addr = labels.get(lexems[1])
-            if (tgt_addr == None):
-                print("Can't get label name", lexems[1])
+        tgt_addr = labels.get(lexems[1])
+        if (tgt_addr == None):
+            try:
+                tgt_addr = int(lexems[1], 16)
+            except ValueError:
+                print("Can't parse ", lexems[1], " into address. Perhaps you inputed wrong label name?")
                 exit(1)
-        finally:
-            print("DBG tgt_addr: ", tgt_addr)
-            instr_b[1:10] = tgt_addr.to_bytes(8, "big")
-            print(instr_b)
-            output_file.write(instr_b)
-            addr_ctr += len(instr_b)
-            print()
-            continue
+
+        print("DBG tgt_addr: ", tgt_addr)
+        instr_b[1:10] = tgt_addr.to_bytes(8, "big")
+        print(instr_b)
+        output_file.write(instr_b)
+        addr_ctr += len(instr_b)
+        print()
+        continue
 
     if (instr_len < 2):
         output_file.write(instr_b)
         continue
     for i, arg in enumerate(lexems[1:]):
-        if ("#" in arg):
+        if ("#" in arg) or (";" == arg):
             break
 
         if ("r" in arg):
