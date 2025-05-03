@@ -1,0 +1,17 @@
+iload r0 -5
+
+uload r1 0
+uload r2 1000
+uload r3 1
+
+label loop
+    ucmp r1 r2
+    jz exit
+    itof r0 r0
+    ftoi r0 r0
+    uadd r1 r3
+    goto loop
+
+label exit
+ncall 1 r0
+halt

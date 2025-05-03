@@ -1,3 +1,6 @@
+#![allow(non_snake_case)]
+
+use crate::fileformats::VoxExeHeader;
 use std::{collections::HashMap, fmt::Result, fs, thread::panicking};
 
 #[derive(Debug, Clone, Copy)]
@@ -15,38 +18,66 @@ pub struct VM {
     flags: [u8; 4], // of, zf, nf, cf
     ip: usize,
     memory: Vec<u8>, // dividing by each bytes, then can be grouped
-    heap_ptr: usize,
+    heap_ptr: u64,
     nativecalls: std::collections::HashMap<u16, NativeFn>,
     running: bool,
     float_epsilon: f64,
+    data_ptr: u64, // pointer at data segment start
 }
 type NativeFn = fn(&mut VM, &[u64]) -> Result;
 type InstructionHandler = fn(&mut VM);
 
 impl VM {
-    pub fn new(heap_size: usize) -> VM {
+    pub fn new(init_mem: usize) -> VM {
         VM {
             registers: [0; 32],
             reg_types: [RegTypes::uint64; 32],
             flags: [0; 4],
             ip: 0x0,
-            memory: vec![0; heap_size],
-            heap_ptr: 0,
+            memory: vec![0; init_mem],
+            heap_ptr: 0x0,
             nativecalls: HashMap::new(),
             running: true,
             float_epsilon: 1e-11,
+            data_ptr: 0x0,
         }
     }
-    pub fn load_nvb(&mut self, input_file_name: &str) {
-        let mut bctr: u64 = 0;
+    pub fn load_vvr(&mut self, input_file_name: &str) {
+        // vvr = voxvm raw
+        let mut bctr: usize = 0;
         match fs::read(input_file_name) {
             Ok(bytes) => {
                 for byte in &bytes {
-                    self.memory[bctr as usize] = *byte;
+                    self.memory[bctr] = *byte;
                     bctr += 1;
                 }
             }
-            Err(err) => panic!("CRITICAL: Can't read .nvb file. Error: {}", err),
+            Err(err) => {
+                panic!("CRITICAL: Can't read .vvr file. Error: {}", err)
+            }
+        }
+    }
+
+    pub fn load_vve(&mut self, input_file_name: &str, minVveVersion: u16) {
+        // vve = voxvm executable
+        let fileHeader: VoxExeHeader = VoxExeHeader::load(input_file_name, minVveVersion).unwrap();
+        //println!("DBG Entry: {}", fileHeader.entry_point);
+
+        let header_size: usize = 30;
+        self.ip = (fileHeader.entry_point as usize) - header_size;
+        self.data_ptr = fileHeader.data_ptr;
+        let mut bctr: usize = 0;
+
+        match fs::read(input_file_name) {
+            Ok(bytes) => {
+                for byte in &bytes[header_size..] {
+                    self.memory[bctr] = *byte;
+                    bctr += 1;
+                }
+            }
+            Err(err) => {
+                panic!("CRITICAL: Can't read .vve file. Error: {}", err)
+            }
         }
     }
 

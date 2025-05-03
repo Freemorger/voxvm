@@ -1,3 +1,7 @@
+# vvas.py will be deprecated soon. 
+# Not all features may be available in vvas.py.
+# Consider using vvas2 in voxvm --vvas=...
+
 import struct
 
 def ishex(s):
@@ -8,8 +12,8 @@ def ishex(s):
         return False
 
 
-INPUT_FILE_NAME = "input.nvs"
-OUTPUT_FILE_NAME = "program_asm.nvb"
+INPUT_FILE_NAME = "input.vvs"
+OUTPUT_FILE_NAME = "program_asm.vvr"
 
 input_file = open(INPUT_FILE_NAME, "r")
 

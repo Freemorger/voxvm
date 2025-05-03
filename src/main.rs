@@ -2,13 +2,15 @@ use std::{env, process::exit};
 
 use vm::VM;
 
-mod tables;
+mod fileformats;
 mod vm;
 
 fn main() {
     const DEFAULT_INIT_RAM: u64 = 1024;
     let mut ram_size: Option<u64> = None;
-    let mut nvb_filename: Option<String> = None;
+    let mut vvr_filename: Option<String> = None;
+    let mut vve_filename: Option<String> = None;
+    const MIN_VVE_VERSION: u16 = 1;
 
     for arg in env::args() {
         if let Some(val) = arg.strip_prefix("--init-ram=") {
@@ -20,11 +22,19 @@ fn main() {
                 }
             }
         }
-        if let Some(val) = arg.strip_prefix("--nvb=") {
+        if let Some(val) = arg.strip_prefix("--vvr=") {
             match val.parse::<String>() {
-                Ok(st) => nvb_filename = Some(st),
+                Ok(st) => vvr_filename = Some(st.to_string()),
                 Err(_) => {
-                    eprintln!("ERROR: Specified file could not be found");
+                    eprintln!("ERROR: Parsing filename error.");
+                }
+            }
+        }
+        if let Some(val) = arg.strip_prefix("--vve=") {
+            match val.parse::<String>() {
+                Ok(st) => vve_filename = Some(st.to_string()),
+                Err(_) => {
+                    eprintln!("ERROR: Parsing filename error.");
                 }
             }
         }
@@ -38,21 +48,22 @@ fn main() {
         }
     }
 
-    let nvb_filename = match nvb_filename {
-        Some(st) => {
-            println!("Loading .nvb file {}", st);
-            st
-        }
-        None => {
-            println!("Usage: --nvb=FILENAME; .nva format TBD.");
-            exit(1);
-        }
-    };
-
     let mut vm_instance = VM::new(ram_size.unwrap() as usize);
     let curdir = env::current_dir().unwrap();
-    let nvb_path = curdir.join("tools").join("program_asm.nvb");
-    //vm_instance.load_nvb(&nvb_path.to_string_lossy().to_string());
-    vm_instance.load_nvb(&nvb_filename);
+
+    match vvr_filename {
+        Some(ref st) => vm_instance.load_vvr(&st),
+        None => {}
+    }
+    match vve_filename {
+        Some(ref st) => vm_instance.load_vve(&st, MIN_VVE_VERSION),
+        None => {}
+    }
+    if (vvr_filename.is_none()) && (vve_filename.is_none()) {
+        println!("Usage: voxvm --vvr=name - loads a vvr (voxvm raw) file;");
+        println!("\t --vve=name - loads a vve (voxvm executable) file.");
+        exit(0);
+    }
+
     vm_instance.run();
 }
