@@ -6,3 +6,5 @@ nilvm
 voxvm
 fastrunas.sh
 .gitignore
+tools/program.vve
+tools/input.vve

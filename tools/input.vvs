@@ -1,17 +1,31 @@
-iload r0 -5
+; fib sequence
+.start
+    uload r0 0 ; prev
+    uload r1 1 ; cur
+    uload r2 1 ; next
+    uload r3 1 ; inc
+    uload r4 2 ; counter
+    uload r5 10 ; to find
 
-uload r1 0
-uload r2 1000
-uload r3 1
+    label loop
+        ucmp r4 r5
+        jg exit
 
-label loop
-    ucmp r1 r2
-    jz exit
-    itof r0 r0
-    ftoi r0 r0
-    uadd r1 r3
-    goto loop
 
-label exit
-ncall 1 r0
-halt
+        uload r0 0
+        uadd r0 r1 # prev = cur
+
+        uload r1 0
+        uadd r1 r2 # cur = next
+
+        uload r2 0
+        uadd r2 r1 # next = cur
+        uadd r2 r0 # .. + prev
+
+
+        uadd r4 r3
+        jmp loop
+
+    label exit
+    ncall 1 r1
+    halt

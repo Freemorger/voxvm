@@ -18,28 +18,36 @@ pub struct VM {
     flags: [u8; 4], // of, zf, nf, cf
     ip: usize,
     memory: Vec<u8>, // dividing by each bytes, then can be grouped
+    stack: Vec<u64>,
+    sp: u64,       // stack pointer
+    heap: Vec<u8>, // same w normal mem
     heap_ptr: u64,
+    data_base: u64, // pointer at data segment start
+    data_size: u64,
     nativecalls: std::collections::HashMap<u16, NativeFn>,
     running: bool,
     float_epsilon: f64,
-    data_ptr: u64, // pointer at data segment start
 }
 type NativeFn = fn(&mut VM, &[u64]) -> Result;
 type InstructionHandler = fn(&mut VM);
 
 impl VM {
-    pub fn new(init_mem: usize) -> VM {
+    pub fn new(init_mem: usize, init_stack: usize, init_heap: usize) -> VM {
         VM {
             registers: [0; 32],
             reg_types: [RegTypes::uint64; 32],
             flags: [0; 4],
             ip: 0x0,
             memory: vec![0; init_mem],
+            stack: vec![0; init_stack],
+            sp: 0x0,
+            heap: vec![0; init_heap],
             heap_ptr: 0x0,
+            data_base: 0x0,
+            data_size: 0,
             nativecalls: HashMap::new(),
             running: true,
-            float_epsilon: 1e-11,
-            data_ptr: 0x0,
+            float_epsilon: 1e-10,
         }
     }
     pub fn load_vvr(&mut self, input_file_name: &str) {
@@ -63,9 +71,10 @@ impl VM {
         let fileHeader: VoxExeHeader = VoxExeHeader::load(input_file_name, minVveVersion).unwrap();
         //println!("DBG Entry: {}", fileHeader.entry_point);
 
-        let header_size: usize = 30;
-        self.ip = (fileHeader.entry_point as usize) - header_size;
-        self.data_ptr = fileHeader.data_ptr;
+        let header_size: usize = 38;
+        self.ip = fileHeader.entry_point as usize;
+        self.data_base = fileHeader.data_base;
+        self.data_size = fileHeader.data_size;
         let mut bctr: usize = 0;
 
         match fs::read(input_file_name) {
