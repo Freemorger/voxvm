@@ -119,6 +119,8 @@ impl VM {
         handlers[0x14] = Self::op_udiv as InstructionHandler;
         handlers[0x15] = Self::op_urem as InstructionHandler;
         handlers[0x16] = Self::op_ucmp as InstructionHandler;
+        handlers[0x17] = Self::op_usqrt as InstructionHandler;
+        handlers[0x18] = Self::op_upow as InstructionHandler;
         handlers[0x20] = Self::op_iload as InstructionHandler;
         handlers[0x21] = Self::op_iadd as InstructionHandler;
         handlers[0x22] = Self::op_imul as InstructionHandler;
@@ -126,6 +128,10 @@ impl VM {
         handlers[0x24] = Self::op_idiv as InstructionHandler;
         handlers[0x25] = Self::op_irem as InstructionHandler;
         handlers[0x26] = Self::op_icmp as InstructionHandler;
+        handlers[0x27] = Self::op_iabs as InstructionHandler;
+        handlers[0x28] = Self::op_ineg as InstructionHandler;
+        handlers[0x29] = Self::op_isqrt as InstructionHandler;
+        handlers[0x2a] = Self::op_ipow as InstructionHandler;
         handlers[0x30] = Self::op_fload as InstructionHandler;
         handlers[0x31] = Self::op_fadd as InstructionHandler;
         handlers[0x32] = Self::op_fmul as InstructionHandler;
@@ -134,6 +140,10 @@ impl VM {
         handlers[0x35] = Self::op_frem as InstructionHandler;
         handlers[0x36] = Self::op_fcmp as InstructionHandler;
         handlers[0x37] = Self::op_fcmp_eps as InstructionHandler;
+        handlers[0x38] = Self::op_fabs as InstructionHandler;
+        handlers[0x39] = Self::op_fneg as InstructionHandler;
+        handlers[0x3a] = Self::op_fsqrt as InstructionHandler;
+        handlers[0x3b] = Self::op_fpow as InstructionHandler;
         handlers[0x40] = Self::op_jmp as InstructionHandler;
         handlers[0x41] = Self::op_jz as InstructionHandler;
         handlers[0x42] = Self::op_jl as InstructionHandler;
@@ -146,6 +156,13 @@ impl VM {
         handlers[0x53] = Self::op_itof as InstructionHandler;
         handlers[0x54] = Self::op_ftou as InstructionHandler;
         handlers[0x55] = Self::op_ftoi as InstructionHandler;
+        handlers[0x60] = Self::op_movr as InstructionHandler;
+        handlers[0x61] = Self::op_or as InstructionHandler;
+        handlers[0x62] = Self::op_and as InstructionHandler;
+        handlers[0x63] = Self::op_not as InstructionHandler;
+        handlers[0x64] = Self::op_xor as InstructionHandler;
+        handlers[0x65] = Self::op_test as InstructionHandler;
+        handlers[0x66] = Self::op_lnot as InstructionHandler;
         // ...
         handlers
     };
@@ -275,6 +292,44 @@ impl VM {
         self.ip += 3;
     }
 
+    fn op_usqrt(&mut self) {
+        // 0x17, size: 3
+        // Square root of Rs to Rd
+        let reg_dest: usize = self.memory[(self.ip + 1)] as usize;
+        let reg_src: usize = self.memory[(self.ip + 2)] as usize;
+
+        let res: u64 = self.registers[reg_src].isqrt();
+        self.registers[reg_dest] = res;
+        self.reg_types[reg_dest] = RegTypes::uint64;
+
+        if (res == 0) {
+            self.flags[1] = 1; //zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_upow(&mut self) {
+        // 0x18, size: 3
+        // Rd = Rd ** Rs
+        let reg_dest: usize = self.memory[(self.ip + 1)] as usize;
+        let reg_src: usize = self.memory[(self.ip + 2)] as usize;
+
+        let res: u64 = self.registers[reg_dest].pow(self.registers[reg_src] as u32);
+        self.registers[reg_dest] = res;
+        if (res == 0) {
+            self.flags[1] = 1; //zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
     fn op_iload(&mut self) {
         //0x20, size: 10
         let register_ind: u8 = self.memory[(self.ip + 1) as usize];
@@ -385,6 +440,95 @@ impl VM {
             self.flags[1] = 0;
         }
 
+        self.ip += 3;
+        return;
+    }
+
+    fn op_iabs(&mut self) {
+        // 0x27, size: 3
+        // Save Absolute value of R src into R dest (Rd = abs(Rs))
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = (i64::abs(self.registers[reg_src_ind] as i64)) as u64;
+        self.registers[reg_dest_ind] = res;
+        self.reg_types[reg_dest_ind] = RegTypes::int64;
+
+        if (res == 0) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_ineg(&mut self) {
+        // 0x28, size: 3
+        // Set R dest to arithmetically inverted R src
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = (-(self.registers[reg_src_ind] as i64)) as u64;
+        self.registers[reg_dest_ind] = res;
+        self.reg_types[reg_dest_ind] = RegTypes::int64;
+
+        if (res == 0) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+        if ((res as i64) < 0) {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_isqrt(&mut self) {
+        //0x29, size: 3
+        // INT64 square root
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = (self.registers[reg_src_ind] as i64).isqrt() as u64;
+        self.registers[reg_dest_ind] = res;
+        self.reg_types[reg_dest_ind] = RegTypes::int64;
+
+        if (res == 0) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_ipow(&mut self) {
+        //0x2a, size: 3
+        // INT64 power (Rd = Rd ** Rs)
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 =
+            ((self.registers[reg_dest_ind] as i64).pow(self.registers[reg_src_ind] as u32)) as u64;
+        self.registers[reg_dest_ind] = res;
+
+        if (res == 0) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+        if ((res as i64) < 0) {
+            self.flags[2] = 1;
+        } else {
+            self.flags[2] = 0;
+        }
         self.ip += 3;
         return;
     }
@@ -514,6 +658,92 @@ impl VM {
             self.flags[2] = 0;
         }
         if (isEqu) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fabs(&mut self) {
+        // 0x38, size: 3
+        // Save Absolute value of R src into R dest (Rd = abs(Rs))
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: f64 = f64::abs(f64::from_bits(self.registers[reg_src_ind]));
+        self.registers[reg_dest_ind] = res.to_bits();
+        self.reg_types[reg_dest_ind] = RegTypes::float64;
+
+        if (res == 0.0f64) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fneg(&mut self) {
+        // 0x39, size: 3
+        // Arithmetical inversion of float64 Rs. Save into Rd
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: f64 = -(f64::from_bits(self.registers[reg_src_ind]));
+        self.registers[reg_dest_ind] = res.to_bits();
+        self.reg_types[reg_dest_ind] = RegTypes::float64;
+
+        if (res == 0.0f64) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+        if (res < 0.0f64) {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fsqrt(&mut self) {
+        // 0x3a, size: 3
+        // Save the square root of Rs into Rd
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: f64 = f64::from_bits(self.registers[reg_src_ind]).sqrt();
+        self.registers[reg_dest_ind] = res.to_bits();
+        self.reg_types[reg_dest_ind] = RegTypes::float64;
+
+        if (res == 0.0f64) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_fpow(&mut self) {
+        // 0x3b, size: 3
+        // Rd = Rd ** Rs
+        let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: f64 = f64::from_bits(self.registers[reg_dest_ind])
+            .powf(f64::from_bits(self.registers[reg_src_ind]));
+        self.registers[reg_dest_ind] = res.to_bits();
+        self.reg_types[reg_dest_ind] = RegTypes::float64;
+
+        if (res == 0.0f64) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -676,6 +906,141 @@ impl VM {
 
         self.registers[r_dest_ind as usize] = res_val as u64;
         self.reg_types[r_dest_ind as usize] = RegTypes::int64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_movr(&mut self) {
+        // 0x60, size: 3
+        // Copies value of R src into R dest, saving the type.
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        self.registers[r_dest_ind as usize] = self.registers[r_src_ind as usize];
+        self.reg_types[r_dest_ind as usize] = self.reg_types[r_src_ind as usize];
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_or(&mut self) {
+        // 0x61, size: 3
+        // Bitwise OR of R dest and R src, save into R dest
+        // Basically: Rd = Rd | Rs
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = self.registers[r_dest_ind] | self.registers[r_src_ind];
+        self.registers[r_dest_ind] = res;
+        self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
+        if (res == 0) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[0] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_and(&mut self) {
+        // 0x62, size: 3
+        // Bitwise AND of R dest and R src, save into R dest
+        // Basically: Rd = Rd & Rs
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = self.registers[r_dest_ind] & self.registers[r_src_ind];
+        self.registers[r_dest_ind] = res;
+        self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
+        if (res == 0) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[0] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_not(&mut self) {
+        // 0x63, size: 3
+        // Bitwise inversion of R src, save into R dest
+        // Basically: Rd = ~Rs
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = !self.registers[r_src_ind];
+        self.registers[r_dest_ind] = res;
+        self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
+        if (res == 0) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[0] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_xor(&mut self) {
+        // 0x64, size: 3
+        // Bitwise XOR (exclusive OR) of R dest and R src, save into R dest
+        // Basically: Rd = Rd ^ Rs
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = self.registers[r_dest_ind] ^ self.registers[r_src_ind];
+        self.registers[r_dest_ind] = res;
+        self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
+        if (res == 0) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[0] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_test(&mut self) {
+        // 0x65, size: 3
+        // Bitwise AND of R dest and R src, but without saving the result
+        // Basically: Rd & Rs, change ZF.
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = self.registers[r_dest_ind] & self.registers[r_src_ind];
+        if (res == 0) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[0] = 0;
+        }
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_lnot(&mut self) {
+        // 0x66, size: 3
+        // Performs logical inversion (for booleans) of R src, saves into R dest
+        // Basically: R dest = !Rs
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        let res: u64 = if (self.registers[r_src_ind] == 0) {
+            1
+        } else {
+            0
+        };
+        self.registers[r_dest_ind] = res;
+        self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
+        if (res == 0) {
+            self.flags[1] = 1;
+        } else {
+            self.flags[0] = 0;
+        }
 
         self.ip += 3;
         return;

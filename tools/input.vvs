@@ -1,31 +1,31 @@
-; fib sequence
 .start
-    uload r0 0 ; prev
-    uload r1 1 ; cur
-    uload r2 1 ; next
-    uload r3 1 ; inc
-    uload r4 2 ; counter
-    uload r5 10 ; to find
+    uload r1 4
+    usqrt r1 r1
+    ncall 1 r1 ; 2
 
-    label loop
-        ucmp r4 r5
-        jg exit
+    uload r2 4
+    uload r3 2
+    upow r2 r3
+    ncall 1 r2 ; 16
 
+    iload r4 -5
+    iload r5 3
+    ipow r4 r5
+    ncall 1 r4 ; -125
 
-        uload r0 0
-        uadd r0 r1 # prev = cur
+    fload r7 9.0
+    fsqrt r6 r7
+    ncall 1 r6 ; 3.0
 
-        uload r1 0
-        uadd r1 r2 # cur = next
+    fload r8 2.0
+    fpow r7 r8
+    ncall 1 r7 ; 81.0
 
-        uload r2 0
-        uadd r2 r1 # next = cur
-        uadd r2 r0 # .. + prev
+    fload r10 -10.0
+    fabs r9 r10
+    ncall 1 r9 ; 10.0
 
+    fneg r10 r10
+    ncall 1 r10 ; 10.0
 
-        uadd r4 r3
-        jmp loop
-
-    label exit
-    ncall 1 r1
     halt

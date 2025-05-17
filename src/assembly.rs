@@ -2,8 +2,7 @@ use core::panic;
 use maplit::hashmap;
 use std::{
     collections::HashMap,
-    default,
-    fs::{self, File, OpenOptions},
+    fs::{File, OpenOptions},
     io::{BufRead, BufReader, Read, Seek, Write},
 };
 
@@ -12,11 +11,11 @@ use crate::fileformats::VoxExeHeader;
 
 enum LexTypes {
     Op(u8),
-    size(u64), // size of instr in bytes
-    ncall_num(u16),
-    reg(u8),
-    addr(u64),
-    value(u64),
+    Size(u64), // size of instr in bytes
+    NcallNum(u16),
+    Reg(u8),
+    Addr(u64),
+    Value(u64),
 }
 
 pub struct VoxAssembly {
@@ -109,7 +108,7 @@ impl VoxAssembly {
                 _ => panic!("ERR: First element should be an Op variant"),
             };
             let instr_len = match &instr_data[1] {
-                LexTypes::size(value) => *value,
+                LexTypes::Size(value) => *value,
                 _ => panic!("ERR: Second element should be an Size variant"),
             };
             self.bin_buffer.push(opcode as u8);
@@ -207,7 +206,7 @@ impl VoxAssembly {
             } else {
                 let instr_data = self.instr_table.get(lexems[0]).unwrap();
                 let instr_size = match instr_data[1] {
-                    LexTypes::size(val) => val,
+                    LexTypes::Size(val) => val,
                     _ => {
                         eprintln!("Error parsing inside label parse: can't fetch instr_size");
                         0
@@ -246,42 +245,59 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
     // Format:
     // Opcode, length, args.
     hashmap! {
-        "halt".to_string() => vec![LexTypes::Op(0xFF), LexTypes::size(1)],
-        "ncall".to_string() => vec![LexTypes::Op(0x1), LexTypes::size(4), LexTypes::ncall_num(0), LexTypes::reg(0)],
-        "nop".to_string() => vec![LexTypes::Op(0x2), LexTypes::size(1)],
-        "uload".to_string() => vec![LexTypes::Op(0x10), LexTypes::size(10), LexTypes::reg(0), LexTypes::value(0)],
-        "uadd".to_string() => vec![LexTypes::Op(0x11), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "umul".to_string() => vec![LexTypes::Op(0x12), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "usub".to_string() => vec![LexTypes::Op(0x13), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "udiv".to_string() => vec![LexTypes::Op(0x14), LexTypes::size(4), LexTypes::reg(0), LexTypes::reg(0), LexTypes::reg(0)],
-        "urem".to_string() => vec![LexTypes::Op(0x15), LexTypes::size(4), LexTypes::reg(0), LexTypes::reg(0), LexTypes::reg(0)],
-        "ucmp".to_string() => vec![LexTypes::Op(0x16), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "iload".to_string() => vec![LexTypes::Op(0x20), LexTypes::size(10), LexTypes::reg(0), LexTypes::value(0)],
-        "iadd".to_string() => vec![LexTypes::Op(0x21), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "imul".to_string() => vec![LexTypes::Op(0x22), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "isub".to_string() => vec![LexTypes::Op(0x23), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "idiv".to_string() => vec![LexTypes::Op(0x24), LexTypes::size(4), LexTypes::reg(0), LexTypes::reg(0), LexTypes::reg(0)],
-        "irem".to_string() => vec![LexTypes::Op(0x25), LexTypes::size(4), LexTypes::reg(0), LexTypes::reg(0), LexTypes::reg(0)],
-        "icmp".to_string() => vec![LexTypes::Op(0x26), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "fload".to_string() => vec![LexTypes::Op(0x30), LexTypes::size(10), LexTypes::reg(0), LexTypes::value(0)],
-        "fadd".to_string() => vec![LexTypes::Op(0x31), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "fmul".to_string() => vec![LexTypes::Op(0x32), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "fsub".to_string() => vec![LexTypes::Op(0x33), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "fdiv".to_string() => vec![LexTypes::Op(0x34), LexTypes::size(4), LexTypes::reg(0), LexTypes::reg(0), LexTypes::reg(0)],
-        "frem".to_string() => vec![LexTypes::Op(0x35), LexTypes::size(4), LexTypes::reg(0), LexTypes::reg(0), LexTypes::reg(0)],
-        "fcmp".to_string() => vec![LexTypes::Op(0x36), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "fcmp_eps".to_string() => vec![LexTypes::Op(0x37), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "jmp".to_string() => vec![LexTypes::Op(0x40), LexTypes::size(9), LexTypes::addr(0)],
-        "jz".to_string() => vec![LexTypes::Op(0x41), LexTypes::size(9), LexTypes::addr(0)],
-        "jl".to_string() => vec![LexTypes::Op(0x42), LexTypes::size(9), LexTypes::addr(0)],
-        "jg".to_string() => vec![LexTypes::Op(0x43), LexTypes::size(9), LexTypes::addr(0)],
-        "jge".to_string() => vec![LexTypes::Op(0x44), LexTypes::size(9), LexTypes::addr(0)],
-        "jle".to_string() => vec![LexTypes::Op(0x45), LexTypes::size(9), LexTypes::addr(0)],
-        "utoi".to_string() => vec![LexTypes::Op(0x50), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "itou".to_string() => vec![LexTypes::Op(0x51), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "utof".to_string() => vec![LexTypes::Op(0x52), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "itof".to_string() => vec![LexTypes::Op(0x53), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "ftou".to_string() => vec![LexTypes::Op(0x54), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
-        "ftoi".to_string() => vec![LexTypes::Op(0x55), LexTypes::size(3), LexTypes::reg(0), LexTypes::reg(0)],
+        "halt".to_string() => vec![LexTypes::Op(0xFF), LexTypes::Size(1)],
+        "ncall".to_string() => vec![LexTypes::Op(0x1), LexTypes::Size(4), LexTypes::NcallNum(0), LexTypes::Reg(0)],
+        "nop".to_string() => vec![LexTypes::Op(0x2), LexTypes::Size(1)],
+        "uload".to_string() => vec![LexTypes::Op(0x10), LexTypes::Size(10), LexTypes::Reg(0), LexTypes::Value(0)],
+        "uadd".to_string() => vec![LexTypes::Op(0x11), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "umul".to_string() => vec![LexTypes::Op(0x12), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "usub".to_string() => vec![LexTypes::Op(0x13), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "udiv".to_string() => vec![LexTypes::Op(0x14), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "urem".to_string() => vec![LexTypes::Op(0x15), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "ucmp".to_string() => vec![LexTypes::Op(0x16), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "usqrt".to_string() => vec![LexTypes::Op(0x17), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "upow".to_string() => vec![LexTypes::Op(0x18), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "iload".to_string() => vec![LexTypes::Op(0x20), LexTypes::Size(10), LexTypes::Reg(0), LexTypes::Value(0)],
+        "iadd".to_string() => vec![LexTypes::Op(0x21), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "imul".to_string() => vec![LexTypes::Op(0x22), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "isub".to_string() => vec![LexTypes::Op(0x23), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "idiv".to_string() => vec![LexTypes::Op(0x24), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "irem".to_string() => vec![LexTypes::Op(0x25), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "icmp".to_string() => vec![LexTypes::Op(0x26), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "iabs".to_string() => vec![LexTypes::Op(0x27), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "ineg".to_string() => vec![LexTypes::Op(0x28), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "isqrt".to_string() => vec![LexTypes::Op(0x29), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "ipow".to_string() => vec![LexTypes::Op(0x2a), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fload".to_string() => vec![LexTypes::Op(0x30), LexTypes::Size(10), LexTypes::Reg(0), LexTypes::Value(0)],
+        "fadd".to_string() => vec![LexTypes::Op(0x31), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fmul".to_string() => vec![LexTypes::Op(0x32), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fsub".to_string() => vec![LexTypes::Op(0x33), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fdiv".to_string() => vec![LexTypes::Op(0x34), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "frem".to_string() => vec![LexTypes::Op(0x35), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fcmp".to_string() => vec![LexTypes::Op(0x36), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fcmp_eps".to_string() => vec![LexTypes::Op(0x37), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fabs".to_string() => vec![LexTypes::Op(0x38), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fneg".to_string() => vec![LexTypes::Op(0x39), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fsqrt".to_string() => vec![LexTypes::Op(0x3a), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "fpow".to_string() => vec![LexTypes::Op(0x3b), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "jmp".to_string() => vec![LexTypes::Op(0x40), LexTypes::Size(9), LexTypes::Addr(0)],
+        "jz".to_string() => vec![LexTypes::Op(0x41), LexTypes::Size(9), LexTypes::Addr(0)],
+        "jl".to_string() => vec![LexTypes::Op(0x42), LexTypes::Size(9), LexTypes::Addr(0)],
+        "jg".to_string() => vec![LexTypes::Op(0x43), LexTypes::Size(9), LexTypes::Addr(0)],
+        "jge".to_string() => vec![LexTypes::Op(0x44), LexTypes::Size(9), LexTypes::Addr(0)],
+        "jle".to_string() => vec![LexTypes::Op(0x45), LexTypes::Size(9), LexTypes::Addr(0)],
+        "utoi".to_string() => vec![LexTypes::Op(0x50), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "itou".to_string() => vec![LexTypes::Op(0x51), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "utof".to_string() => vec![LexTypes::Op(0x52), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "itof".to_string() => vec![LexTypes::Op(0x53), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "ftou".to_string() => vec![LexTypes::Op(0x54), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "ftoi".to_string() => vec![LexTypes::Op(0x55), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "movr".to_string() => vec![LexTypes::Op(0x60), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "or".to_string() => vec![LexTypes::Op(0x61), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "and".to_string() => vec![LexTypes::Op(0x62), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "not".to_string() => vec![LexTypes::Op(0x63), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "xor".to_string() => vec![LexTypes::Op(0x64), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "test".to_string() => vec![LexTypes::Op(0x65), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "lnot".to_string() => vec![LexTypes::Op(0x66), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)]
     }
 }
