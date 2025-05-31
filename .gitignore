@@ -8,3 +8,4 @@ fastrunas.sh
 .gitignore
 tools/program.vve
 tools/input.vve
+program_asm.vvr

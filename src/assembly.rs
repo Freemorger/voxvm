@@ -6,7 +6,7 @@ use std::{
     io::{BufRead, BufReader, Read, Seek, Write},
 };
 
-use crate::fileformats::VoxExeHeader;
+use crate::{fileformats::VoxExeHeader, vm::RegTypes};
 //use crate::fileformats::VoxExeHeader;
 
 enum LexTypes {
@@ -18,17 +18,27 @@ enum LexTypes {
     Value(u64),
 }
 
+#[derive(PartialEq)]
+enum CurrentSection {
+    Code,
+    Data,
+    None,
+}
+
 pub struct VoxAssembly {
     cur_addr: u64,
     entry: u64,
     data_start: u64,
     labels: HashMap<String, u64>,
+    data_labels: HashMap<String, u64>,
     instr_table: HashMap<String, Vec<LexTypes>>,
     bin_buffer: Vec<u8>,
     input_file: File,
     output_file: File,
     read_buffer: BufReader<File>,
     is_vve: bool,
+    cursect: CurrentSection,
+    data_size: u64,
 }
 
 impl VoxAssembly {
@@ -39,6 +49,7 @@ impl VoxAssembly {
         };
         let default_entry: u64 = 0;
         let mut labels: HashMap<String, u64> = HashMap::new();
+        let mut data_labels: HashMap<String, u64> = HashMap::new();
         let mut buf: Vec<u8> = Vec::new();
 
         let mut in_file: File;
@@ -66,12 +77,15 @@ impl VoxAssembly {
             entry: default_entry,
             data_start: 0x0,
             labels: labels,
+            data_labels: data_labels,
             instr_table: voxasm_instr_table(),
             bin_buffer: buf,
             output_file: out_file,
             read_buffer: BufReader::new(in_file.try_clone().unwrap()),
             input_file: in_file,
             is_vve: is_vve,
+            cursect: CurrentSection::None,
+            data_size: 0,
         }
     }
 
@@ -81,18 +95,88 @@ impl VoxAssembly {
         self.read_buffer.seek(std::io::SeekFrom::Start((0)));
 
         let lines: Vec<_> = self.read_buffer.by_ref().lines().collect();
-        for line in lines {
+        for (line_num, line) in lines.into_iter().enumerate() {
             let line = line.unwrap();
             let lexems: Vec<&str> = line.trim().split_whitespace().collect();
             if lexems.is_empty() {
                 continue;
             }
+            if (lexems[0] == "section" && lexems[1] == "text") {
+                self.cursect = CurrentSection::Code;
+                continue;
+            } else if (lexems[0] == "section" && lexems[1] == "data") {
+                self.cursect = CurrentSection::Data;
+                continue;
+            }
             //println!("DBG Lexems: {}", lexems.join(", "));
             if (lexems[0] == "label")
                 || (lexems[0] == ".start")
-                || (lexems[0] == ".data")
                 || (lexems[0].contains("#") || (lexems[0] == ";"))
             {
+                continue;
+            }
+
+            if (self.cursect == CurrentSection::Data) {
+                let var_type_ind: u8 = match lexems[1] {
+                    "uint" => 0x1,
+                    "int" => 0x2,
+                    "float" => 0x3,
+                    "str" => 0x4,
+                    _ => panic!("CRITICAL at voxasm: Unknown const type."),
+                };
+                self.bin_buffer.push(var_type_ind);
+                match var_type_ind {
+                    0x1 => {
+                        let arg: &str = lexems[2];
+                        let mut res: u64;
+                        let mut num_sys: u32 = 10;
+                        if (arg.to_lowercase().contains("0x")) {
+                            num_sys = 16;
+                        }
+                        res = u64::from_str_radix(arg, num_sys).unwrap();
+                        self.bin_buffer.extend_from_slice(&res.to_be_bytes());
+                    }
+                    0x2 => {
+                        let arg: &str = lexems[2];
+                        let mut res: i64;
+                        let mut num_sys: u32 = 10;
+                        if (arg.to_lowercase().contains("0x")) {
+                            num_sys = 16;
+                        }
+                        res = i64::from_str_radix(arg, num_sys).unwrap();
+                        self.bin_buffer.extend_from_slice(&res.to_be_bytes());
+                    }
+                    0x3 => {
+                        let arg: &str = lexems[2];
+                        let res: f64 = arg.parse().unwrap();
+                        self.bin_buffer.extend_from_slice(&res.to_be_bytes());
+                    }
+                    0x4 => {
+                        let mut len_ctr: u64 = 0;
+                        let mut tmp_utf16_buf: Vec<u8> = Vec::new();
+                        let start = line.find('"').expect(
+                            (&format!(
+                                "error parsing line {}: can't find opening quotemark for str",
+                                line_num
+                            )),
+                        );
+                        let rel_end = line[start + 1..].rfind('"').expect(&format!(
+                            "error parsing line {}: can't find closing quotemark for str",
+                            line_num
+                        ));
+                        let end = start + 1 + rel_end;
+                        len_ctr = (line[start + 1..end].encode_utf16().count() * 2) as u64; // utf16 bytes
+                        for c in line[start + 1..end].chars() {
+                            let mut buf = [0u16; 2];
+                            let utf16 = c.encode_utf16(&mut buf);
+                            let utf16_bytes = utf16[0].to_be_bytes();
+                            tmp_utf16_buf.extend_from_slice(&utf16_bytes);
+                        }
+                        self.bin_buffer.extend_from_slice(&len_ctr.to_be_bytes());
+                        self.bin_buffer.extend_from_slice(&tmp_utf16_buf);
+                    }
+                    _ => panic!("CRITICAL at voxasm: unknown constant type."),
+                }
                 continue;
             }
 
@@ -113,7 +197,7 @@ impl VoxAssembly {
             };
             self.bin_buffer.push(opcode as u8);
 
-            if (opcode >= 0x40) && (opcode <= 0x50) {
+            if (opcode >= 0x40) && (opcode < 0x50) {
                 let get_addr = self.labels.get(lexems[1]);
                 let mut tgt_addr: u64 = 0;
                 match get_addr {
@@ -122,6 +206,20 @@ impl VoxAssembly {
                 }
                 //println!("DBG Target addr: {}", tgt_addr);
                 self.bin_buffer.extend_from_slice(&tgt_addr.to_be_bytes());
+                continue;
+            }
+            if (opcode >= 0x70) && (opcode < 0x80) {
+                let get_addr = self.data_labels.get(lexems[2]);
+                let tgt_addr: u64 = match get_addr {
+                    Some(val) => *val,
+                    None => lexems[2].parse().unwrap(),
+                };
+                let reg_ind: u8 = lexems[1][1..].parse().unwrap();
+                //println!("dbg tgt addr: {}", tgt_addr);
+                let offset: u64 = u64_from_str_auto(&lexems[3]);
+                self.bin_buffer.push(reg_ind);
+                self.bin_buffer.extend_from_slice(&tgt_addr.to_be_bytes());
+                self.bin_buffer.extend_from_slice(&offset.to_be_bytes());
                 continue;
             }
             for arg in &lexems[1..] {
@@ -178,8 +276,14 @@ impl VoxAssembly {
     }
 
     fn save_label(&mut self, labelname: String) {
-        let addr = self.entry + self.cur_addr;
+        let addr = self.cur_addr;
         self.labels.insert(labelname, addr);
+        return;
+    }
+
+    fn save_data_label(&mut self, labelname: String, var_type: RegTypes) {
+        let rel_addr: u64 = self.data_size;
+        self.data_labels.insert(labelname, rel_addr);
         return;
     }
 
@@ -195,14 +299,43 @@ impl VoxAssembly {
             if (lexems[0] == "label") {
                 self.save_label(lexems[1].to_string());
                 continue;
-            } else if (lexems[0] == "goto") {
-                self.cur_addr += 9;
-                continue;
             } else if (lexems[0] == ".start") {
                 self.entry = self.cur_addr;
                 continue;
             } else if (lexems[0].contains("#") || lexems[0] == ";") {
                 continue;
+            } else if (lexems[0] == "section" && lexems[1] == "data") {
+                //println!("DBG CURADDR: {}", self.cur_addr);
+                self.data_start = self.cur_addr;
+                self.cursect = CurrentSection::Data;
+            } else if (lexems[0] == "section" && lexems[1] == "text") {
+                self.cursect = CurrentSection::Code;
+            } else if (self.cursect == CurrentSection::Data) {
+                let var_type: RegTypes = match lexems[1] {
+                    "uint" => RegTypes::uint64,
+                    "int" => RegTypes::int64,
+                    "float" => RegTypes::float64,
+                    "str" => RegTypes::StrAddr,
+                    _ => panic!("CRITICAL: Unknown variable type"),
+                };
+                self.save_data_label(lexems[0].to_string(), var_type);
+                let var_size: u64 = match var_type {
+                    RegTypes::uint64 => 8,
+                    RegTypes::int64 => 8,
+                    RegTypes::float64 => 8,
+                    RegTypes::StrAddr => {
+                        let size_contained: u64 = get_text_length(&line).unwrap() as u64; //utf16
+                        println!("line: {}", line);
+                        println!("Size contained: {}", size_contained);
+                        8 + size_contained
+                    }
+                    RegTypes::address => {
+                        let size_contained: u64 = lexems[1].parse().unwrap();
+                        8 + size_contained
+                    }
+                };
+                self.cur_addr += 1 + var_size;
+                self.data_size += 1 + var_size;
             } else {
                 let instr_data = self.instr_table.get(lexems[0]).unwrap();
                 let instr_size = match instr_data[1] {
@@ -212,6 +345,7 @@ impl VoxAssembly {
                         0
                     }
                 };
+                //println!("DBG INSTR SIZE: {}", instr_size);
                 self.cur_addr += instr_size;
             }
         }
@@ -298,6 +432,38 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "not".to_string() => vec![LexTypes::Op(0x63), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "xor".to_string() => vec![LexTypes::Op(0x64), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "test".to_string() => vec![LexTypes::Op(0x65), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
-        "lnot".to_string() => vec![LexTypes::Op(0x66), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)]
+        "lnot".to_string() => vec![LexTypes::Op(0x66), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "dsload".to_string() => vec![LexTypes::Op(0x70), LexTypes::Size(18), LexTypes::Reg(0), LexTypes::Addr(0), LexTypes::Addr(0)]
     }
+}
+fn get_text_length(input: &str) -> Result<usize, &'static str> {
+    let start = match input.find('"') {
+        Some(pos) => pos + 1,
+        None => return Err("String should be started with quotemark"),
+    };
+
+    let end = match input[start..].rfind('"') {
+        Some(pos) => start + pos,
+        None => return Err("String should be ended with quotemark"),
+    };
+
+    let text = &input[start..end];
+
+    // For UTF-16 code units:
+    Ok(text.encode_utf16().count() * 2)
+}
+
+pub fn u64_from_str_auto(s: &str) -> u64 {
+    let mut radix: u32 = 10;
+    if (s.contains("0x")) {
+        radix = 16;
+    } else if (s.contains("0b")) {
+        radix = 2;
+    }
+
+    let res: u64 = match u64::from_str_radix(s, radix) {
+        Ok(val) => val,
+        Err(err) => panic!("ERROR Parsing a number from {}: {}", s, err),
+    };
+    return res;
 }

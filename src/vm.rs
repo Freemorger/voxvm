@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use crate::fileformats::VoxExeHeader;
+use core::panic;
 use std::{collections::HashMap, fmt::Result, fs, thread::panicking};
 
 #[derive(Debug, Clone, Copy)]
@@ -8,6 +9,7 @@ pub enum RegTypes {
     uint64,
     int64,
     float64,
+    StrAddr,
     address,
 }
 
@@ -163,6 +165,7 @@ impl VM {
         handlers[0x64] = Self::op_xor as InstructionHandler;
         handlers[0x65] = Self::op_test as InstructionHandler;
         handlers[0x66] = Self::op_lnot as InstructionHandler;
+        handlers[0x70] = Self::op_dsload as InstructionHandler;
         // ...
         handlers
     };
@@ -1046,6 +1049,65 @@ impl VM {
         return;
     }
 
+    fn op_dsload(&mut self) {
+        // 0x70, size: 18
+        // dsload Rdest reladdr offset
+        let rel_addr: usize =
+            args_to_u64(&self.memory[(self.ip + 2 as usize)..(self.ip + 10 as usize)]) as usize; // relative address of target variable in VM memory
+        let offset: usize =
+            args_to_u64(&self.memory[(self.ip + 10 as usize)..(self.ip + 18 as usize)]) as usize;
+        /*println!(
+            "DBG Parsed offset: {}, parsed rel addr: {}, data base: {}",
+            offset, rel_addr, self.data_base
+        );*/
+        let abs_addr: usize = (self.data_base as usize) + rel_addr + offset; // absolute addr
+        let var_type_ind: u8 = self.memory[abs_addr - offset];
+        let var_type: RegTypes = match var_type_ind {
+            0x1 => RegTypes::uint64,
+            0x2 => RegTypes::int64,
+            0x3 => RegTypes::float64,
+            0x4 => RegTypes::StrAddr,
+            other => panic!(
+                "CRITICAL: Unknown constant type: {}. IP: {}",
+                other, self.ip
+            ),
+        };
+        match var_type {
+            RegTypes::uint64 => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] =
+                    args_to_u64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                self.reg_types[dest_reg_ind as usize] = RegTypes::uint64;
+                //println!("DBG start addr: {}", abs_addr + 2);
+            }
+            RegTypes::int64 => {
+                let res: i64 = args_to_i64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = res as u64;
+                self.reg_types[dest_reg_ind as usize] = RegTypes::int64;
+            }
+            RegTypes::float64 => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                let res: f64 = args_to_f64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                self.registers[dest_reg_ind as usize] = res.to_bits();
+                self.reg_types[dest_reg_ind as usize] = RegTypes::float64;
+            }
+            RegTypes::StrAddr => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.reg_types[dest_reg_ind as usize] = RegTypes::StrAddr;
+            }
+            RegTypes::address => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.reg_types[dest_reg_ind as usize] = RegTypes::address;
+            }
+        }
+
+        self.ip += 18;
+        return;
+    }
+
     fn ncall_println(&mut self) {
         // size: 4
         let src_r_num: u8 = self.memory[(self.ip + 3)];
@@ -1062,6 +1124,25 @@ impl VM {
             }
             RegTypes::address => {
                 // TODO: Implement printing data from addr
+            }
+            RegTypes::StrAddr => {
+                //let rel_addr: u64 = self.registers[src_r_num as usize];
+                //let abs_addr: u64 = self.data_base + rel_addr;
+                let abs_addr: u64 = self.registers[src_r_num as usize];
+                let bytes_len = &self.memory[((abs_addr - 8) as usize)..((abs_addr) as usize)];
+                let size: u64 = u64::from_be_bytes(bytes_len.try_into().unwrap());
+
+                let bytes_str = &self.memory[(abs_addr as usize)..((abs_addr + size) as usize)];
+                let utf16_data = u8_slice_to_u16_vec(bytes_str);
+
+                let res_str: String = match String::from_utf16(&utf16_data) {
+                    Ok(val) => val,
+                    Err(err) => panic!(
+                        "CRITICAL: While converting into utf8 printable string: {}",
+                        err
+                    ),
+                };
+                println!("{}", res_str);
             }
         }
         self.ip += 4;
@@ -1103,4 +1184,11 @@ pub fn format_float(value: f64) -> String {
     } else {
         s.to_string()
     }
+}
+
+pub fn u8_slice_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .chunks(2)
+        .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+        .collect()
 }
