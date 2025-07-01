@@ -1,9 +1,11 @@
 use core::panic;
 use maplit::hashmap;
+use regex::Regex;
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
     io::{BufRead, BufReader, Read, Seek, Write},
+    str::FromStr,
 };
 
 use crate::{fileformats::VoxExeHeader, vm::RegTypes};
@@ -117,12 +119,12 @@ impl VoxAssembly {
             }
 
             if (self.cursect == CurrentSection::Data) {
-                let var_type_ind: u8 = match lexems[1] {
-                    "uint" => 0x1,
-                    "int" => 0x2,
-                    "float" => 0x3,
-                    "str" => 0x4,
-                    _ => panic!("CRITICAL at voxasm: Unknown const type."),
+                let var_type_ind: u8 = match detect_ds_var_type(lexems[1]) {
+                    Some(val) => val,
+                    None => panic!(
+                        "ERROR: Unknown data segment variable type {} at line {}",
+                        lexems[1], line_num
+                    ),
                 };
                 self.bin_buffer.push(var_type_ind);
                 match var_type_ind {
@@ -130,25 +132,31 @@ impl VoxAssembly {
                         let arg: &str = lexems[2];
                         let mut res: u64;
                         let mut num_sys: u32 = 10;
+                        let var_size: u64 = 8;
                         if (arg.to_lowercase().contains("0x")) {
                             num_sys = 16;
                         }
                         res = u64::from_str_radix(arg, num_sys).unwrap();
+                        self.bin_buffer.extend_from_slice(&var_size.to_be_bytes());
                         self.bin_buffer.extend_from_slice(&res.to_be_bytes());
                     }
                     0x2 => {
                         let arg: &str = lexems[2];
                         let mut res: i64;
                         let mut num_sys: u32 = 10;
+                        let var_size: u64 = 8;
                         if (arg.to_lowercase().contains("0x")) {
                             num_sys = 16;
                         }
                         res = i64::from_str_radix(arg, num_sys).unwrap();
+                        self.bin_buffer.extend_from_slice(&var_size.to_be_bytes());
                         self.bin_buffer.extend_from_slice(&res.to_be_bytes());
                     }
                     0x3 => {
                         let arg: &str = lexems[2];
                         let res: f64 = arg.parse().unwrap();
+                        let var_size: u64 = 8;
+                        self.bin_buffer.extend_from_slice(&var_size.to_be_bytes());
                         self.bin_buffer.extend_from_slice(&res.to_be_bytes());
                     }
                     0x4 => {
@@ -174,6 +182,57 @@ impl VoxAssembly {
                         }
                         self.bin_buffer.extend_from_slice(&len_ctr.to_be_bytes());
                         self.bin_buffer.extend_from_slice(&tmp_utf16_buf);
+                    }
+                    0x6 => {
+                        let res_vec: Vec<u64> = match parse_array_string::<u64>(&line) {
+                            Ok(res) => res,
+                            Err(err) => {
+                                panic!(
+                                    "ERROR: While parsing array at line {}: {}",
+                                    line_num + 1,
+                                    err
+                                )
+                            }
+                        };
+                        let len_ctr: u64 = (res_vec.len() * 8) as u64; //64-bit
+                        self.bin_buffer.extend_from_slice(&len_ctr.to_be_bytes());
+                        for num in res_vec {
+                            self.bin_buffer.extend_from_slice(&num.to_be_bytes());
+                        }
+                    }
+                    0x7 => {
+                        let res_vec: Vec<i64> = match parse_array_string::<i64>(&line) {
+                            Ok(res) => res,
+                            Err(err) => {
+                                panic!(
+                                    "ERROR: While parsing array at line {}: {}",
+                                    line_num + 1,
+                                    err
+                                )
+                            }
+                        };
+                        let len_ctr: u64 = (res_vec.len() * 8) as u64; //64-bit
+                        self.bin_buffer.extend_from_slice(&len_ctr.to_be_bytes());
+                        for num in res_vec {
+                            self.bin_buffer.extend_from_slice(&num.to_be_bytes());
+                        }
+                    }
+                    0x8 => {
+                        let res_vec: Vec<f64> = match parse_array_string::<f64>(&line) {
+                            Ok(res) => res,
+                            Err(err) => {
+                                panic!(
+                                    "ERROR: While parsing array at line {}: {}",
+                                    line_num + 1,
+                                    err
+                                )
+                            }
+                        };
+                        let len_ctr: u64 = (res_vec.len() * 8) as u64; //64-bit
+                        self.bin_buffer.extend_from_slice(&len_ctr.to_be_bytes());
+                        for num in res_vec {
+                            self.bin_buffer.extend_from_slice(&num.to_be_bytes());
+                        }
                     }
                     _ => panic!("CRITICAL at voxasm: unknown constant type."),
                 }
@@ -209,17 +268,34 @@ impl VoxAssembly {
                 continue;
             }
             if (opcode >= 0x70) && (opcode < 0x80) {
-                let get_addr = self.data_labels.get(lexems[2]);
-                let tgt_addr: u64 = match get_addr {
-                    Some(val) => *val,
-                    None => lexems[2].parse().unwrap(),
-                };
-                let reg_ind: u8 = lexems[1][1..].parse().unwrap();
-                //println!("dbg tgt addr: {}", tgt_addr);
-                let offset: u64 = u64_from_str_auto(&lexems[3]);
-                self.bin_buffer.push(reg_ind);
-                self.bin_buffer.extend_from_slice(&tgt_addr.to_be_bytes());
-                self.bin_buffer.extend_from_slice(&offset.to_be_bytes());
+                for (i, dat) in instr_data[2..].iter().enumerate() {
+                    let cur_lex = lexems[i + 1];
+                    match *dat {
+                        LexTypes::Reg(_) => {
+                            if (cur_lex.contains("r")) {
+                                let reg_ind: u8 = cur_lex[1..].parse().unwrap();
+                                self.bin_buffer.push(reg_ind);
+                            } else {
+                                panic!(
+                                    "In instruction {} at line {}: {} argument have to be register",
+                                    lexems[0], line_num, i
+                                );
+                            }
+                        }
+                        LexTypes::Addr(_) => {
+                            let get_addr = self.data_labels.get(cur_lex);
+                            let tgt_addr: u64 = match get_addr {
+                                Some(val) => *val,
+                                None => u64_from_str_auto(cur_lex),
+                            };
+                            self.bin_buffer.extend_from_slice(&tgt_addr.to_be_bytes());
+                        }
+                        _ => panic!(
+                            "ERROR: Unexpected argument type for data segment operation {}",
+                            lexems[0]
+                        ),
+                    }
+                }
                 continue;
             }
             for arg in &lexems[1..] {
@@ -281,7 +357,7 @@ impl VoxAssembly {
         return;
     }
 
-    fn save_data_label(&mut self, labelname: String, var_type: RegTypes) {
+    fn save_data_label(&mut self, labelname: String) {
         let rel_addr: u64 = self.data_size;
         self.data_labels.insert(labelname, rel_addr);
         return;
@@ -311,28 +387,33 @@ impl VoxAssembly {
             } else if (lexems[0] == "section" && lexems[1] == "text") {
                 self.cursect = CurrentSection::Code;
             } else if (self.cursect == CurrentSection::Data) {
-                let var_type: RegTypes = match lexems[1] {
-                    "uint" => RegTypes::uint64,
-                    "int" => RegTypes::int64,
-                    "float" => RegTypes::float64,
-                    "str" => RegTypes::StrAddr,
-                    _ => panic!("CRITICAL: Unknown variable type"),
+                let var_type: u8 = match detect_ds_var_type(lexems[1]) {
+                    Some(val) => val,
+                    None => panic!("Unknown var type: {}", lexems[1]),
                 };
-                self.save_data_label(lexems[0].to_string(), var_type);
+                self.save_data_label(lexems[0].to_string());
                 let var_size: u64 = match var_type {
-                    RegTypes::uint64 => 8,
-                    RegTypes::int64 => 8,
-                    RegTypes::float64 => 8,
-                    RegTypes::StrAddr => {
+                    0x1 => 8 + 8, // length + uint (length is const but
+                    // saved for consistency
+                    0x2 => 8 + 8, // int
+                    0x3 => 8 + 8, // float
+                    0x4 => {
+                        // str
                         let size_contained: u64 = get_text_length(&line).unwrap() as u64; //utf16
-                        println!("line: {}", line);
-                        println!("Size contained: {}", size_contained);
                         8 + size_contained
                     }
-                    RegTypes::address => {
+                    0x5 => {
+                        // ptr
                         let size_contained: u64 = lexems[1].parse().unwrap();
                         8 + size_contained
                     }
+                    0x6 | 0x7 | 0x8 => {
+                        // uint, int, float arrays
+                        let size_contained: u64 = get_array_length_str(&line).unwrap() as u64;
+                        //println!("array size contained: {}", size_contained);
+                        8 + size_contained
+                    }
+                    _ => panic!("Unknown var size of: {}", var_type),
                 };
                 self.cur_addr += 1 + var_size;
                 self.data_size += 1 + var_size;
@@ -433,7 +514,15 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "xor".to_string() => vec![LexTypes::Op(0x64), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "test".to_string() => vec![LexTypes::Op(0x65), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "lnot".to_string() => vec![LexTypes::Op(0x66), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
-        "dsload".to_string() => vec![LexTypes::Op(0x70), LexTypes::Size(18), LexTypes::Reg(0), LexTypes::Addr(0), LexTypes::Addr(0)]
+        "dsload".to_string() => vec![LexTypes::Op(0x70), LexTypes::Size(18), LexTypes::Reg(0), LexTypes::Addr(0), LexTypes::Addr(0)],
+        "dsrload".to_string() => vec![LexTypes::Op(0x71), LexTypes::Size(11), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Addr(0)],
+        "dssave".to_string() => vec![LexTypes::Op(0x72), LexTypes::Size(18), LexTypes::Reg(0), LexTypes::Addr(0), LexTypes::Addr(0)],
+        "dsrsave".to_string() => vec![LexTypes::Op(0x73), LexTypes::Size(11), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Addr(0)],
+        "dslea".to_string() => vec![LexTypes::Op(0x74), LexTypes::Size(18), LexTypes::Reg(0), LexTypes::Addr(0), LexTypes::Addr(0)],
+        "dsderef".to_string() => vec![LexTypes::Op(0x75), LexTypes::Size(11), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Addr(0)],
+        "dsrlea".to_string() => vec![LexTypes::Op(0x76), LexTypes::Size(11), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Addr(0)],
+        "dsrderef".to_string() => vec![LexTypes::Op(0x77), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+
     }
 }
 fn get_text_length(input: &str) -> Result<usize, &'static str> {
@@ -453,6 +542,33 @@ fn get_text_length(input: &str) -> Result<usize, &'static str> {
     Ok(text.encode_utf16().count() * 2)
 }
 
+fn get_array_length_str(input: &str) -> Option<usize> {
+    let count = input
+        .trim_matches(|c| c == '[' || c == ']') // Remove the enclosing brackets
+        .split(',') // Split by commas
+        .filter(|num| !num.trim().is_empty()) // Ignore empty entries, if any
+        .count(); // Count the number of elements
+    return Some(count * 8);
+}
+
+fn parse_array_string<T: FromStr>(input: &str) -> Result<Vec<T>, Box<dyn std::error::Error>>
+where
+    T::Err: std::error::Error + 'static,
+{
+    // Find the opening and closing brackets
+    let start = input.rfind('[').ok_or("Missing opening bracket")?;
+    let end = input.rfind(']').ok_or("Missing closing bracket")?;
+
+    // Extract the array content
+    let array_content = &input[start + 1..end];
+
+    // Split by commas and parse each element
+    array_content
+        .split(',')
+        .map(|s| s.trim().parse::<T>().map_err(|e| e.into()))
+        .collect()
+}
+
 pub fn u64_from_str_auto(s: &str) -> u64 {
     let mut radix: u32 = 10;
     if (s.contains("0x")) {
@@ -466,4 +582,27 @@ pub fn u64_from_str_auto(s: &str) -> u64 {
         Err(err) => panic!("ERROR Parsing a number from {}: {}", s, err),
     };
     return res;
+}
+
+pub fn detect_ds_var_type(s: &str) -> Option<u8> {
+    let re_uint = Regex::new(r"^uint\[\d+\]$").unwrap(); // Changed to [size]
+    let re_int = Regex::new(r"^int\[\d+\]$").unwrap(); // Changed to [size]
+    let re_float = Regex::new(r"^float\[\d+\]$").unwrap(); // Changed to [size]
+
+    if re_uint.is_match(s) {
+        return Some(0x6);
+    } else if re_int.is_match(s) {
+        return Some(0x7);
+    } else if re_float.is_match(s) {
+        return Some(0x8);
+    }
+
+    // Then match scalar types
+    match s {
+        "uint" => Some(0x1),
+        "int" => Some(0x2),
+        "float" => Some(0x3),
+        "str" => Some(0x4),
+        _ => None,
+    }
 }

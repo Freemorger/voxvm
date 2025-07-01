@@ -1,4 +1,4 @@
-use std::{env, process::exit};
+use std::{env, fs::File, io::Write, process::exit};
 
 use assembly::VoxAssembly;
 use vm::VM;
@@ -21,6 +21,8 @@ fn main() {
 
     let mut vas_input_filename: Option<String> = None;
     let mut vas_out_filename: Option<String> = None;
+
+    let mut coredump_on_exit: bool = false;
 
     for arg in env::args() {
         if let Some(val) = arg.strip_prefix("--init-ram=") {
@@ -81,6 +83,9 @@ fn main() {
                     eprintln!("ERROR: Parsing vas input filename error.");
                 }
             }
+        }
+        if let Some(val) = arg.strip_prefix("--coredump_exit") {
+            coredump_on_exit = true;
         }
     }
 
@@ -145,4 +150,15 @@ fn main() {
     }
 
     vm_instance.run();
+    if (coredump_on_exit) {
+        let dump = vm_instance.coredump();
+        let mut out_file = match File::create("voxvm.dump") {
+            Ok(f) => f,
+            Err(e) => {
+                println!("While saving coredump: {}", e.to_string());
+                return;
+            }
+        };
+        out_file.write_all(&dump);
+    }
 }

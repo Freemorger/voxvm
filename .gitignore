@@ -9,3 +9,6 @@ fastrunas.sh
 tools/program.vve
 tools/input.vve
 program_asm.vvr
+voxvm.dump
+tools/input2.vvs
+tools/program2.vve

@@ -2,7 +2,12 @@
 
 use crate::fileformats::VoxExeHeader;
 use core::panic;
-use std::{collections::HashMap, fmt::Result, fs, thread::panicking};
+use std::{
+    collections::HashMap,
+    fmt::Result,
+    fs::{self, File},
+    io::Write,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum RegTypes {
@@ -166,6 +171,13 @@ impl VM {
         handlers[0x65] = Self::op_test as InstructionHandler;
         handlers[0x66] = Self::op_lnot as InstructionHandler;
         handlers[0x70] = Self::op_dsload as InstructionHandler;
+        handlers[0x71] = Self::op_dsrload as InstructionHandler;
+        handlers[0x72] = Self::op_dssave as InstructionHandler;
+        handlers[0x73] = Self::op_dsrsave as InstructionHandler;
+        handlers[0x74] = Self::op_dslea as InstructionHandler;
+        handlers[0x75] = Self::op_dsderef as InstructionHandler;
+        handlers[0x76] = Self::op_dsrlea as InstructionHandler;
+        handlers[0x77] = Self::op_dsrderef as InstructionHandler;
         // ...
         handlers
     };
@@ -1054,14 +1066,74 @@ impl VM {
         // dsload Rdest reladdr offset
         let rel_addr: usize =
             args_to_u64(&self.memory[(self.ip + 2 as usize)..(self.ip + 10 as usize)]) as usize; // relative address of target variable in VM memory
-        let offset: usize =
-            args_to_u64(&self.memory[(self.ip + 10 as usize)..(self.ip + 18 as usize)]) as usize;
-        /*println!(
-            "DBG Parsed offset: {}, parsed rel addr: {}, data base: {}",
-            offset, rel_addr, self.data_base
-        );*/
-        let abs_addr: usize = (self.data_base as usize) + rel_addr + offset; // absolute addr
-        let var_type_ind: u8 = self.memory[abs_addr - offset];
+        let mut offset: usize =
+            args_to_u64(&self.memory[(self.ip + 10 as usize)..(self.ip + 18 as usize)]) as usize
+                + 8; // 8 for length skip
+        let mut abs_addr: usize = (self.data_base as usize) + rel_addr + offset; // absolute addr.
+        let mut var_type_ind: u8 = self.memory[abs_addr - offset];
+        if (var_type_ind >= 0x6 && var_type_ind <= 0x8) {
+            var_type_ind -= 5; // dsload only loading value. use dslea for loading addr
+        }
+        let var_type: RegTypes = match var_type_ind {
+            0x1 => RegTypes::uint64,
+            0x2 => RegTypes::int64,
+            0x3 => RegTypes::float64,
+            0x4 => RegTypes::StrAddr,
+            other => panic!(
+                "CRITICAL: Unknown constant type: {}. IP: {}",
+                other, self.ip
+            ),
+        };
+        match var_type {
+            RegTypes::uint64 => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] =
+                    args_to_u64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+
+                self.reg_types[dest_reg_ind as usize] = RegTypes::uint64;
+            }
+            RegTypes::int64 => {
+                let res: i64 = args_to_i64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = res as u64;
+                self.reg_types[dest_reg_ind as usize] = RegTypes::int64;
+            }
+            RegTypes::float64 => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                let res: f64 = args_to_f64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                self.registers[dest_reg_ind as usize] = res.to_bits();
+                self.reg_types[dest_reg_ind as usize] = RegTypes::float64;
+            }
+            RegTypes::StrAddr => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.reg_types[dest_reg_ind as usize] = RegTypes::StrAddr;
+            }
+            RegTypes::address => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.reg_types[dest_reg_ind as usize] = RegTypes::address;
+            }
+        }
+
+        self.ip += 18;
+        return;
+    }
+
+    fn op_dsrload(&mut self) {
+        // 0x71, size: 11
+        // dsload Rdest Roffset reladdr
+
+        let mut offset: usize =
+            self.registers[self.memory[(self.ip + 2) as usize] as usize] as usize + 8; // 8 for
+                                                                                       // length skip
+        let rel_addr: usize =
+            args_to_u64(&self.memory[(self.ip + 3 as usize)..(self.ip + 11 as usize)]) as usize; // relative address of target variable in VM memory
+        let mut abs_addr: usize = (self.data_base as usize) + rel_addr + offset;
+        let mut var_type_ind: u8 = self.memory[abs_addr - offset];
+        if (var_type_ind >= 0x6 && var_type_ind <= 0x8) {
+            var_type_ind -= 5; // dsload only loading value. use dslea for loading addr
+        }
         let var_type: RegTypes = match var_type_ind {
             0x1 => RegTypes::uint64,
             0x2 => RegTypes::int64,
@@ -1104,7 +1176,151 @@ impl VM {
             }
         }
 
+        self.ip += 11;
+        return;
+    }
+
+    fn op_dssave(&mut self) {
+        // 0x72, size: 18
+        // dssave Rsrc rel_addr offset
+        // Updates the value in data segment
+        let r_src_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let rel_addr: usize = args_to_u64(&self.memory[(self.ip + 2)..(self.ip + 10)]) as usize;
+        let offset: usize = args_to_u64(&self.memory[(self.ip + 10)..(self.ip + 18)]) as usize;
+
+        let abs_addr: usize = (self.data_base as usize) + rel_addr + offset + 1 + 8; // +1 for var
+                                                                                     // type, +1 for var size
+        match self.reg_types[r_src_ind] {
+            RegTypes::uint64 => {
+                let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
+                for i in 0..8 {
+                    self.memory[abs_addr + i] = val[i];
+                }
+            }
+            _ => {}
+        }
+
         self.ip += 18;
+        return;
+    }
+    fn op_dsrsave(&mut self) {
+        // 0x73, size: 11
+        // dsrsave Rsrc Roffset rel_addr
+        let r_src_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_offset_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+        let offset = self.registers[r_offset_ind];
+        let rel_addr: usize = args_to_u64(&self.memory[(self.ip + 3)..(self.ip + 11)]) as usize;
+
+        let abs_addr: usize = (self.data_base as usize) + rel_addr + (offset as usize) + 1 + 8; // +1 for var
+                                                                                                // type, +1 for var size
+        match self.reg_types[r_src_ind] {
+            RegTypes::uint64 => {
+                let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
+                for i in 0..8 {
+                    self.memory[abs_addr + i] = val[i];
+                }
+            }
+            _ => {}
+        }
+
+        self.ip += 11;
+        return;
+    }
+    fn op_dslea(&mut self) {
+        // 0x74, size: 18
+        // dslea Rdest rel_addr offset
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let rel_addr: u64 =
+            args_to_u64(&self.memory[(self.ip + 2) as usize..(self.ip + 10) as usize]);
+        let offset: u64 =
+            args_to_u64(&self.memory[(self.ip + 10) as usize..(self.ip + 18) as usize]);
+
+        let abs_addr: u64 = self.data_base + rel_addr + offset;
+        self.registers[r_dest_ind] = abs_addr;
+        self.reg_types[r_dest_ind] = RegTypes::address;
+
+        self.ip += 18;
+        return;
+    }
+    fn op_dsderef(&mut self) {
+        // 0x75, size: 11
+        // dsderef Rsrc Rdest Offset
+        let r_src_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_dest_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+        let offset: usize =
+            args_to_u64(&self.memory[(self.ip + 3) as usize..(self.ip + 11) as usize]) as usize;
+
+        let src_val = self.registers[r_src_ind] as usize;
+        let val_type = self.memory[src_val - offset];
+        if val_type == 0x4 {
+            if let Err(e) = self.err_coredump() {
+                eprintln!("Error creating coredump: {}", e);
+            };
+            panic!("CRITICAL: At Instruction {:#x}:\n String constant cannot be dereferenced. \nCoredump created.", self.ip);
+        }
+
+        let tgt_addr: usize = src_val - offset + 8 + 1; // 8 for length skip
+        self.registers[r_dest_ind] = args_to_u64(&self.memory[tgt_addr..(tgt_addr + 8)]);
+        self.reg_types[r_dest_ind] = match val_type {
+            0x1 | 0x5 => RegTypes::uint64,
+            0x2 | 0x6 => RegTypes::int64,
+            0x3 | 0x7 => RegTypes::float64,
+            0x4 => RegTypes::StrAddr, //wont be reached anyway
+            other => {
+                panic!("Unknown data type: {}", other);
+            }
+        };
+
+        self.ip += 11;
+        return;
+    }
+    fn op_dsrlea(&mut self) {
+        // 0x76, size: 11
+        // dsrlea Rdest Roffset Addr
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_offset_ind: usize = self.memory[(self.ip + 2)] as usize;
+        let rel_addr: u64 =
+            args_to_u64(&self.memory[(self.ip + 3) as usize..(self.ip + 11) as usize]);
+        let offset: u64 = self.registers[r_offset_ind];
+
+        let abs_addr: u64 = self.data_base + rel_addr + offset;
+        self.registers[r_dest_ind] = abs_addr;
+        self.reg_types[r_dest_ind] = RegTypes::address;
+
+        self.ip += 11;
+        return;
+    }
+    fn op_dsrderef(&mut self) {
+        // 0x77, size: 4
+        // dsrderef Rsrc Rdest Roffset
+        let r_src_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_dest_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+        let r_offset_ind: usize = self.memory[(self.ip + 3) as usize] as usize;
+
+        let offset: usize = self.registers[r_offset_ind] as usize;
+
+        let src_val = self.registers[r_src_ind] as usize;
+        let val_type = self.memory[src_val - offset];
+        if val_type == 0x4 {
+            if let Err(e) = self.err_coredump() {
+                eprintln!("Error creating coredump: {}", e);
+            };
+            panic!("CRITICAL: At Instruction {:#x}:\n String constant cannot be dereferenced. \nCoredump created.", self.ip);
+        }
+
+        let tgt_addr: usize = src_val - offset + 8 + 1; // 8 for length skip
+        self.registers[r_dest_ind] = args_to_u64(&self.memory[tgt_addr..(tgt_addr + 8)]);
+        self.reg_types[r_dest_ind] = match val_type {
+            0x1 | 0x5 => RegTypes::uint64,
+            0x2 | 0x6 => RegTypes::int64,
+            0x3 | 0x7 => RegTypes::float64,
+            0x4 => RegTypes::StrAddr, //wont be reached anyway
+            other => {
+                panic!("Unknown data type: {}", other);
+            }
+        };
+
+        self.ip += 4;
         return;
     }
 
@@ -1123,7 +1339,8 @@ impl VM {
                 println!("{}", format_float(val));
             }
             RegTypes::address => {
-                // TODO: Implement printing data from addr
+                let val: u64 = self.registers[src_r_num as usize];
+                println!("vm memory address: {:#x}", val);
             }
             RegTypes::StrAddr => {
                 //let rel_addr: u64 = self.registers[src_r_num as usize];
@@ -1147,6 +1364,36 @@ impl VM {
         }
         self.ip += 4;
         return;
+    }
+    pub fn coredump(&mut self) -> Vec<u8> {
+        let mut res: Vec<u8> = Vec::new();
+        let mut zeros: Vec<u8> = vec![0; 16];
+        res.extend(&self.memory.clone());
+        res.extend(&(zeros.clone()));
+
+        let stack_u8_cl: Vec<u8> = self
+            .stack
+            .clone()
+            .iter()
+            .flat_map(|num| num.to_be_bytes())
+            .collect();
+        res.extend(&stack_u8_cl);
+        res.extend(&zeros);
+        res.extend(&(self.heap));
+        res
+    }
+    fn err_coredump(&mut self) -> std::result::Result<(), String> {
+        let dump = self.coredump();
+        let mut out_file: File = match File::create("voxvm_err.dump") {
+            Ok(f) => f,
+            Err(e) => {
+                return Err(e.to_string());
+            }
+        };
+        if let Err(e) = out_file.write_all(&dump) {
+            return Err(e.to_string());
+        };
+        Ok(())
     }
 }
 

@@ -1,11 +1,12 @@
 section text
 .start
-    dsload r2 num 0
-    ncall 1 r2
-    dsload r1 msg 0
+    uload r2 9 ; 1 + 8 (1 for type skip)
+    dsrlea r1 r2 arr 
     ncall 1 r1
+    dsrderef r1 r3 r2 
+    ncall 1 r3
+
     halt
 
 section data
-    num int 15
-    msg str "hello, more quote: "hi again". "
+    arr uint[6] [4554, 1338, 228, 144, 9999, 1567]
