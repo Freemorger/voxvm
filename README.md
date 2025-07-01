@@ -1,6 +1,7 @@
 # Simple Virutal machine using 64-bit registers, static typization, etc.
 
 ## Usage:
+```
 voxvm --vve=filename.vve  runs a vve (voxvm executable) file
       \--vvr=filename.vvr  runs a vvr (voxvm raw) file, not recommended
       \--init-ram=num  specifies a starting value of RAM for main memory (in bytes)
@@ -9,6 +10,7 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
       \--vas=filename  runs voxvm assembly with filename as input file
       \--vas-out=filename  specifies voxvm assembly output filename
       \--coredump_exit  coredumps after halt, saves it into `voxvm.dump` file
+```
 
 ## Last implementations + todos:
 | Thing                 | Is implemented |
