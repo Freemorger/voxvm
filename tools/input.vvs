@@ -1,12 +1,35 @@
 section text
 .start
-    uload r2 9 ; 1 + 8 (1 for type skip)
-    dsrlea r1 r2 arr 
-    ncall 1 r1
-    dsrderef r1 r3 r2 
-    ncall 1 r3
+    ; simple stress test with 100 stack push/pops
+
+    uload r1 0 ; counter
+    uload r2 100 ; max
+    uload r3 1 ; inc
+    uload r4 31 ; val
+
+    label loop_push
+        ucmp r1 r2
+        jz loop_push_exit
+
+        push r4
+
+        uadd r1 r3
+        jmp loop_push
+
+    label loop_push_exit
+        xor r1 r1
+        jmp loop_pop
+
+    label loop_pop
+        ucmp r1 r2
+        jz exit
+
+        pop r5
+
+        uadd r1 r3
+        jmp loop_pop
+
+    label exit
+        ncall 1 r5
 
     halt
-
-section data
-    arr uint[6] [4554, 1338, 228, 144, 9999, 1567]

@@ -5,10 +5,11 @@ use vm::VM;
 
 mod assembly;
 mod fileformats;
+mod stack;
 mod vm;
 
 fn main() {
-    const DEFAULT_INIT_RAM: usize = 1024;
+    const DEFAULT_INIT_RAM: usize = 4096;
     const DEFAULT_INIT_STACK: usize = DEFAULT_INIT_RAM / 2;
     const DEFAULT_INIT_HEAP: usize = DEFAULT_INIT_RAM / 2;
     let mut ram_size: Option<usize> = None;
@@ -150,7 +151,7 @@ fn main() {
     }
 
     vm_instance.run();
-    if (coredump_on_exit) {
+    if coredump_on_exit {
         let dump = vm_instance.coredump();
         let mut out_file = match File::create("voxvm.dump") {
             Ok(f) => f,

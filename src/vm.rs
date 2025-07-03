@@ -1,6 +1,9 @@
 #![allow(non_snake_case)]
 
-use crate::fileformats::VoxExeHeader;
+use crate::{
+    fileformats::VoxExeHeader,
+    stack::{op_pop, op_push},
+};
 use core::panic;
 use std::{
     collections::HashMap,
@@ -10,22 +13,23 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy)]
+#[repr(u64)]
 pub enum RegTypes {
-    uint64,
-    int64,
-    float64,
-    StrAddr,
-    address,
+    uint64 = 1,
+    int64 = 2,
+    float64 = 3,
+    StrAddr = 4,
+    address = 5,
 }
 
 #[derive(Debug)]
 pub struct VM {
-    registers: [u64; 32],
-    reg_types: [RegTypes; 32],
+    pub registers: [u64; 32],
+    pub reg_types: [RegTypes; 32],
     flags: [u8; 4], // of, zf, nf, cf
-    ip: usize,
-    memory: Vec<u8>, // dividing by each bytes, then can be grouped
-    stack: Vec<u64>,
+    pub ip: usize,
+    pub memory: Vec<u8>, // dividing by each bytes, then can be grouped
+    pub stack: Vec<u64>,
     sp: u64,       // stack pointer
     heap: Vec<u8>, // same w normal mem
     heap_ptr: u64,
@@ -103,7 +107,7 @@ impl VM {
             //println!("DBG: cur opcode: {}", self.ip);
             Self::OPERATIONS[opcode as usize](self);
         }
-        if (self.ip >= self.memory.capacity()) {
+        if self.ip >= self.memory.capacity() {
             panic!(
                 "CRITICAL: Instruction overflow! VM Memory capacity: {}, latest opcode: {}.
                 \n Consider running VM with more init ram using
@@ -178,6 +182,8 @@ impl VM {
         handlers[0x75] = Self::op_dsderef as InstructionHandler;
         handlers[0x76] = Self::op_dsrlea as InstructionHandler;
         handlers[0x77] = Self::op_dsrderef as InstructionHandler;
+        handlers[0x80] = op_push as InstructionHandler;
+        handlers[0x81] = op_pop as InstructionHandler;
         // ...
         handlers
     };
@@ -244,7 +250,7 @@ impl VM {
         let toadd_reg_ind: u8 = self.memory[(self.ip + 2) as usize];
 
         self.registers[in_reg_ind as usize] -= self.registers[toadd_reg_ind as usize];
-        if (self.registers[in_reg_ind as usize] == 0) {
+        if self.registers[in_reg_ind as usize] == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[1] = 0;
@@ -255,10 +261,10 @@ impl VM {
 
     fn op_udiv(&mut self) {
         // 0x14, size: 4
-        let reg_out: u8 = self.memory[(self.ip + 1)];
-        let reg_1: u8 = self.memory[(self.ip + 2)];
-        let reg_2: u8 = self.memory[(self.ip + 3)];
-        if (self.registers[reg_2 as usize] == 0) {
+        let reg_out: u8 = self.memory[self.ip + 1];
+        let reg_1: u8 = self.memory[self.ip + 2];
+        let reg_2: u8 = self.memory[self.ip + 3];
+        if self.registers[reg_2 as usize] == 0 {
             panic!("DIVZERO Exception at addr {}", self.ip);
         }
 
@@ -272,9 +278,9 @@ impl VM {
 
     fn op_urem(&mut self) {
         // 0x15, size: 4
-        let reg_dest: u8 = self.memory[(self.ip + 1)];
-        let reg_1: u8 = self.memory[(self.ip + 2)];
-        let reg_2: u8 = self.memory[(self.ip + 3)];
+        let reg_dest: u8 = self.memory[self.ip + 1];
+        let reg_1: u8 = self.memory[self.ip + 2];
+        let reg_2: u8 = self.memory[self.ip + 3];
 
         self.registers[reg_dest as usize] =
             self.registers[reg_1 as usize] % self.registers[reg_2 as usize];
@@ -286,19 +292,19 @@ impl VM {
 
     fn op_ucmp(&mut self) {
         // 0x16, size: 3
-        let reg_dest: u8 = self.memory[(self.ip + 1)];
-        let reg_src: u8 = self.memory[(self.ip + 2)];
+        let reg_dest: u8 = self.memory[self.ip + 1];
+        let reg_src: u8 = self.memory[self.ip + 2];
 
-        let isLess: bool = (self.registers[reg_dest as usize] < self.registers[reg_src as usize]);
-        let isEqu: bool = (self.registers[reg_dest as usize] == self.registers[reg_src as usize]);
+        let isLess: bool = self.registers[reg_dest as usize] < self.registers[reg_src as usize];
+        let isEqu: bool = self.registers[reg_dest as usize] == self.registers[reg_src as usize];
 
-        if (isLess) {
+        if isLess {
             self.flags[2] = 1;
         } else {
             self.flags[2] = 0;
         }
 
-        if (isEqu) {
+        if isEqu {
             self.flags[1] = 1;
         } else {
             self.flags[1] = 0;
@@ -310,14 +316,14 @@ impl VM {
     fn op_usqrt(&mut self) {
         // 0x17, size: 3
         // Square root of Rs to Rd
-        let reg_dest: usize = self.memory[(self.ip + 1)] as usize;
-        let reg_src: usize = self.memory[(self.ip + 2)] as usize;
+        let reg_dest: usize = self.memory[self.ip + 1] as usize;
+        let reg_src: usize = self.memory[self.ip + 2] as usize;
 
         let res: u64 = self.registers[reg_src].isqrt();
         self.registers[reg_dest] = res;
         self.reg_types[reg_dest] = RegTypes::uint64;
 
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1; //zf
         } else {
             self.flags[1] = 0;
@@ -330,12 +336,12 @@ impl VM {
     fn op_upow(&mut self) {
         // 0x18, size: 3
         // Rd = Rd ** Rs
-        let reg_dest: usize = self.memory[(self.ip + 1)] as usize;
-        let reg_src: usize = self.memory[(self.ip + 2)] as usize;
+        let reg_dest: usize = self.memory[self.ip + 1] as usize;
+        let reg_src: usize = self.memory[self.ip + 2] as usize;
 
         let res: u64 = self.registers[reg_dest].pow(self.registers[reg_src] as u32);
         self.registers[reg_dest] = res;
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1; //zf
         } else {
             self.flags[1] = 0;
@@ -402,7 +408,7 @@ impl VM {
         let reg_1: u8 = self.memory[(self.ip + 2) as usize];
         let reg_2: u8 = self.memory[(self.ip + 3) as usize];
 
-        if (self.registers[reg_2 as usize] == 0) {
+        if self.registers[reg_2 as usize] == 0 {
             panic!("DIVZERO exception at {}", self.ip);
         }
         let res: i64 =
@@ -421,7 +427,7 @@ impl VM {
         let reg_1: u8 = self.memory[(self.ip + 2) as usize];
         let reg_2: u8 = self.memory[(self.ip + 3) as usize];
 
-        if (self.registers[reg_2 as usize] == 0) {
+        if self.registers[reg_2 as usize] == 0 {
             panic!("DIVZERO exception at {}", self.ip);
         }
         let res: i64 =
@@ -439,17 +445,17 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let isLess: bool = ((self.registers[dest_r_ind as usize] as i64)
-            < (self.registers[src_r_ind as usize] as i64));
-        let isEqu: bool = ((self.registers[dest_r_ind as usize] as i64)
-            == (self.registers[src_r_ind as usize] as i64));
+        let isLess: bool = (self.registers[dest_r_ind as usize] as i64)
+            < (self.registers[src_r_ind as usize] as i64);
+        let isEqu: bool = (self.registers[dest_r_ind as usize] as i64)
+            == (self.registers[src_r_ind as usize] as i64);
 
-        if (isLess) {
+        if isLess {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
         }
-        if (isEqu) {
+        if isEqu {
             self.flags[1] = 1;
         } else {
             self.flags[1] = 0;
@@ -469,7 +475,7 @@ impl VM {
         self.registers[reg_dest_ind] = res;
         self.reg_types[reg_dest_ind] = RegTypes::int64;
 
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -489,12 +495,12 @@ impl VM {
         self.registers[reg_dest_ind] = res;
         self.reg_types[reg_dest_ind] = RegTypes::int64;
 
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if ((res as i64) < 0) {
+        if (res as i64) < 0 {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -514,7 +520,7 @@ impl VM {
         self.registers[reg_dest_ind] = res;
         self.reg_types[reg_dest_ind] = RegTypes::int64;
 
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -534,12 +540,12 @@ impl VM {
             ((self.registers[reg_dest_ind] as i64).pow(self.registers[reg_src_ind] as u32)) as u64;
         self.registers[reg_dest_ind] = res;
 
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if ((res as i64) < 0) {
+        if (res as i64) < 0 {
             self.flags[2] = 1;
         } else {
             self.flags[2] = 0;
@@ -635,17 +641,17 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let isLess: bool = ((f64::from_bits(self.registers[dest_r_ind as usize]))
-            < (f64::from_bits(self.registers[src_r_ind as usize])));
-        let isEqu: bool = ((f64::from_bits(self.registers[dest_r_ind as usize]))
-            == (f64::from_bits(self.registers[src_r_ind as usize])));
+        let isLess: bool = (f64::from_bits(self.registers[dest_r_ind as usize]))
+            < (f64::from_bits(self.registers[src_r_ind as usize]));
+        let isEqu: bool = (f64::from_bits(self.registers[dest_r_ind as usize]))
+            == (f64::from_bits(self.registers[src_r_ind as usize]));
 
-        if (isLess) {
+        if isLess {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
         }
-        if (isEqu) {
+        if isEqu {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -664,15 +670,15 @@ impl VM {
         let src_val: f64 = f64::from_bits(self.registers[src_r_ind as usize]);
         let epsilon: f64 = self.float_epsilon;
 
-        let isLess: bool = ((src_val - dest_val) > (epsilon));
-        let isEqu: bool = ((dest_val - src_val).abs() < (epsilon));
+        let isLess: bool = (src_val - dest_val) > (epsilon);
+        let isEqu: bool = (dest_val - src_val).abs() < (epsilon);
 
-        if (isLess) {
+        if isLess {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
         }
-        if (isEqu) {
+        if isEqu {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -692,7 +698,7 @@ impl VM {
         self.registers[reg_dest_ind] = res.to_bits();
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
-        if (res == 0.0f64) {
+        if res == 0.0f64 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -712,12 +718,12 @@ impl VM {
         self.registers[reg_dest_ind] = res.to_bits();
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
-        if (res == 0.0f64) {
+        if res == 0.0f64 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if (res < 0.0f64) {
+        if res < 0.0f64 {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -737,7 +743,7 @@ impl VM {
         self.registers[reg_dest_ind] = res.to_bits();
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
-        if (res == 0.0f64) {
+        if res == 0.0f64 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -758,7 +764,7 @@ impl VM {
         self.registers[reg_dest_ind] = res.to_bits();
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
-        if (res == 0.0f64) {
+        if res == 0.0f64 {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -778,7 +784,7 @@ impl VM {
     fn op_jz(&mut self) {
         // 0x41, size: 9
         //println!("DBG: JZ, ZF = {}", self.flags[1]);
-        if (self.flags[1] != 0) {
+        if self.flags[1] != 0 {
             let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
             self.ip = target_addr as usize;
             return;
@@ -791,7 +797,7 @@ impl VM {
     fn op_jl(&mut self) {
         // 0x42, size: 9
         //println!("DBG: NF = {}", self.flags[2]);
-        if (self.flags[2] != 0) {
+        if self.flags[2] != 0 {
             let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
             self.ip = target_addr as usize;
             return;
@@ -815,7 +821,7 @@ impl VM {
 
     fn op_jge(&mut self) {
         // 0x44, size: 9
-        if (self.flags[2] == 0) {
+        if self.flags[2] == 0 {
             let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
             self.ip = target_addr as usize;
             return;
@@ -949,7 +955,7 @@ impl VM {
         let res: u64 = self.registers[r_dest_ind] | self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -969,7 +975,7 @@ impl VM {
         let res: u64 = self.registers[r_dest_ind] & self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -989,7 +995,7 @@ impl VM {
         let res: u64 = !self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1009,7 +1015,7 @@ impl VM {
         let res: u64 = self.registers[r_dest_ind] ^ self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1027,7 +1033,7 @@ impl VM {
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
         let res: u64 = self.registers[r_dest_ind] & self.registers[r_src_ind];
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1044,14 +1050,10 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = if (self.registers[r_src_ind] == 0) {
-            1
-        } else {
-            0
-        };
+        let res: u64 = if self.registers[r_src_ind] == 0 { 1 } else { 0 };
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if (res == 0) {
+        if res == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1066,12 +1068,12 @@ impl VM {
         // dsload Rdest reladdr offset
         let rel_addr: usize =
             args_to_u64(&self.memory[(self.ip + 2 as usize)..(self.ip + 10 as usize)]) as usize; // relative address of target variable in VM memory
-        let mut offset: usize =
+        let offset: usize =
             args_to_u64(&self.memory[(self.ip + 10 as usize)..(self.ip + 18 as usize)]) as usize
                 + 8; // 8 for length skip
-        let mut abs_addr: usize = (self.data_base as usize) + rel_addr + offset; // absolute addr.
+        let abs_addr: usize = (self.data_base as usize) + rel_addr + offset; // absolute addr.
         let mut var_type_ind: u8 = self.memory[abs_addr - offset];
-        if (var_type_ind >= 0x6 && var_type_ind <= 0x8) {
+        if var_type_ind >= 0x6 && var_type_ind <= 0x8 {
             var_type_ind -= 5; // dsload only loading value. use dslea for loading addr
         }
         let var_type: RegTypes = match var_type_ind {
@@ -1124,14 +1126,14 @@ impl VM {
         // 0x71, size: 11
         // dsload Rdest Roffset reladdr
 
-        let mut offset: usize =
+        let offset: usize =
             self.registers[self.memory[(self.ip + 2) as usize] as usize] as usize + 8; // 8 for
-                                                                                       // length skip
+        // length skip
         let rel_addr: usize =
             args_to_u64(&self.memory[(self.ip + 3 as usize)..(self.ip + 11 as usize)]) as usize; // relative address of target variable in VM memory
-        let mut abs_addr: usize = (self.data_base as usize) + rel_addr + offset;
+        let abs_addr: usize = (self.data_base as usize) + rel_addr + offset;
         let mut var_type_ind: u8 = self.memory[abs_addr - offset];
-        if (var_type_ind >= 0x6 && var_type_ind <= 0x8) {
+        if var_type_ind >= 0x6 && var_type_ind <= 0x8 {
             var_type_ind -= 5; // dsload only loading value. use dslea for loading addr
         }
         let var_type: RegTypes = match var_type_ind {
@@ -1189,7 +1191,7 @@ impl VM {
         let offset: usize = args_to_u64(&self.memory[(self.ip + 10)..(self.ip + 18)]) as usize;
 
         let abs_addr: usize = (self.data_base as usize) + rel_addr + offset + 1 + 8; // +1 for var
-                                                                                     // type, +1 for var size
+        // type, +1 for var size
         match self.reg_types[r_src_ind] {
             RegTypes::uint64 => {
                 let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
@@ -1212,7 +1214,7 @@ impl VM {
         let rel_addr: usize = args_to_u64(&self.memory[(self.ip + 3)..(self.ip + 11)]) as usize;
 
         let abs_addr: usize = (self.data_base as usize) + rel_addr + (offset as usize) + 1 + 8; // +1 for var
-                                                                                                // type, +1 for var size
+        // type, +1 for var size
         match self.reg_types[r_src_ind] {
             RegTypes::uint64 => {
                 let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
@@ -1256,7 +1258,10 @@ impl VM {
             if let Err(e) = self.err_coredump() {
                 eprintln!("Error creating coredump: {}", e);
             };
-            panic!("CRITICAL: At Instruction {:#x}:\n String constant cannot be dereferenced. \nCoredump created.", self.ip);
+            panic!(
+                "CRITICAL: At Instruction {:#x}:\n String constant cannot be dereferenced. \nCoredump created.",
+                self.ip
+            );
         }
 
         let tgt_addr: usize = src_val - offset + 8 + 1; // 8 for length skip
@@ -1278,7 +1283,7 @@ impl VM {
         // 0x76, size: 11
         // dsrlea Rdest Roffset Addr
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
-        let r_offset_ind: usize = self.memory[(self.ip + 2)] as usize;
+        let r_offset_ind: usize = self.memory[self.ip + 2] as usize;
         let rel_addr: u64 =
             args_to_u64(&self.memory[(self.ip + 3) as usize..(self.ip + 11) as usize]);
         let offset: u64 = self.registers[r_offset_ind];
@@ -1305,7 +1310,10 @@ impl VM {
             if let Err(e) = self.err_coredump() {
                 eprintln!("Error creating coredump: {}", e);
             };
-            panic!("CRITICAL: At Instruction {:#x}:\n String constant cannot be dereferenced. \nCoredump created.", self.ip);
+            panic!(
+                "CRITICAL: At Instruction {:#x}:\n String constant cannot be dereferenced. \nCoredump created.",
+                self.ip
+            );
         }
 
         let tgt_addr: usize = src_val - offset + 8 + 1; // 8 for length skip
@@ -1326,7 +1334,7 @@ impl VM {
 
     fn ncall_println(&mut self) {
         // size: 4
-        let src_r_num: u8 = self.memory[(self.ip + 3)];
+        let src_r_num: u8 = self.memory[self.ip + 3];
         match self.reg_types[src_r_num as usize] {
             RegTypes::uint64 => {
                 println!("{}", self.registers[src_r_num as usize]);
@@ -1367,7 +1375,7 @@ impl VM {
     }
     pub fn coredump(&mut self) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
-        let mut zeros: Vec<u8> = vec![0; 16];
+        let zeros: Vec<u8> = vec![0; 16];
         res.extend(&self.memory.clone());
         res.extend(&(zeros.clone()));
 
@@ -1426,7 +1434,7 @@ pub fn args_to_f64(args: &[u8]) -> f64 {
 pub fn format_float(value: f64) -> String {
     let s = format!("{:.11}", value);
     let s = s.trim_end_matches('0').trim_end_matches('.');
-    if (s.is_empty()) {
+    if s.is_empty() {
         "0".to_string()
     } else {
         s.to_string()

@@ -39,7 +39,7 @@ impl VoxExeHeader {
                 }
 
                 let version: u16 = u16::from_be_bytes(bytes[4..6].try_into().unwrap());
-                if (version < minVersion) {
+                if version < minVersion {
                     panic!(
                         "{} file format version is {} and deprecated.",
                         filename, version

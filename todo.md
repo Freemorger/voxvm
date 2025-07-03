@@ -1,1 +1,1 @@
-start stack!
+functions, call stack?

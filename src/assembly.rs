@@ -8,7 +8,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::{fileformats::VoxExeHeader, vm::RegTypes};
+use crate::fileformats::VoxExeHeader;
 //use crate::fileformats::VoxExeHeader;
 
 enum LexTypes {
@@ -45,16 +45,16 @@ pub struct VoxAssembly {
 
 impl VoxAssembly {
     pub fn new(input_filename: String, output_filename: String) -> VoxAssembly {
-        let is_vve: bool = match (output_filename.contains(".vve")) {
+        let is_vve: bool = match output_filename.contains(".vve") {
             true => true,
             false => false,
         };
         let default_entry: u64 = 0;
-        let mut labels: HashMap<String, u64> = HashMap::new();
-        let mut data_labels: HashMap<String, u64> = HashMap::new();
-        let mut buf: Vec<u8> = Vec::new();
+        let labels: HashMap<String, u64> = HashMap::new();
+        let data_labels: HashMap<String, u64> = HashMap::new();
+        let buf: Vec<u8> = Vec::new();
 
-        let mut in_file: File;
+        let in_file: File;
         {
             let _out = match File::create(output_filename.clone()) {
                 Ok(file) => file,
@@ -64,7 +64,7 @@ impl VoxAssembly {
                 ),
             };
         }
-        let mut out_file: File = OpenOptions::new()
+        let out_file: File = OpenOptions::new()
             .append(true)
             .open(output_filename)
             .unwrap();
@@ -94,7 +94,7 @@ impl VoxAssembly {
     pub fn assemble(&mut self) {
         self.first_stage();
         self.cur_addr = 0;
-        self.read_buffer.seek(std::io::SeekFrom::Start((0)));
+        self.read_buffer.seek(std::io::SeekFrom::Start(0));
 
         let lines: Vec<_> = self.read_buffer.by_ref().lines().collect();
         for (line_num, line) in lines.into_iter().enumerate() {
@@ -103,10 +103,10 @@ impl VoxAssembly {
             if lexems.is_empty() {
                 continue;
             }
-            if (lexems[0] == "section" && lexems[1] == "text") {
+            if lexems[0] == "section" && lexems[1] == "text" {
                 self.cursect = CurrentSection::Code;
                 continue;
-            } else if (lexems[0] == "section" && lexems[1] == "data") {
+            } else if lexems[0] == "section" && lexems[1] == "data" {
                 self.cursect = CurrentSection::Data;
                 continue;
             }
@@ -118,7 +118,7 @@ impl VoxAssembly {
                 continue;
             }
 
-            if (self.cursect == CurrentSection::Data) {
+            if self.cursect == CurrentSection::Data {
                 let var_type_ind: u8 = match detect_ds_var_type(lexems[1]) {
                     Some(val) => val,
                     None => panic!(
@@ -130,10 +130,10 @@ impl VoxAssembly {
                 match var_type_ind {
                     0x1 => {
                         let arg: &str = lexems[2];
-                        let mut res: u64;
+                        let res: u64;
                         let mut num_sys: u32 = 10;
                         let var_size: u64 = 8;
-                        if (arg.to_lowercase().contains("0x")) {
+                        if arg.to_lowercase().contains("0x") {
                             num_sys = 16;
                         }
                         res = u64::from_str_radix(arg, num_sys).unwrap();
@@ -142,10 +142,10 @@ impl VoxAssembly {
                     }
                     0x2 => {
                         let arg: &str = lexems[2];
-                        let mut res: i64;
+                        let res: i64;
                         let mut num_sys: u32 = 10;
                         let var_size: u64 = 8;
-                        if (arg.to_lowercase().contains("0x")) {
+                        if arg.to_lowercase().contains("0x") {
                             num_sys = 16;
                         }
                         res = i64::from_str_radix(arg, num_sys).unwrap();
@@ -162,12 +162,10 @@ impl VoxAssembly {
                     0x4 => {
                         let mut len_ctr: u64 = 0;
                         let mut tmp_utf16_buf: Vec<u8> = Vec::new();
-                        let start = line.find('"').expect(
-                            (&format!(
-                                "error parsing line {}: can't find opening quotemark for str",
-                                line_num
-                            )),
-                        );
+                        let start = line.find('"').expect(&format!(
+                            "error parsing line {}: can't find opening quotemark for str",
+                            line_num
+                        ));
                         let rel_end = line[start + 1..].rfind('"').expect(&format!(
                             "error parsing line {}: can't find closing quotemark for str",
                             line_num
@@ -272,7 +270,7 @@ impl VoxAssembly {
                     let cur_lex = lexems[i + 1];
                     match *dat {
                         LexTypes::Reg(_) => {
-                            if (cur_lex.contains("r")) {
+                            if cur_lex.contains("r") {
                                 let reg_ind: u8 = cur_lex[1..].parse().unwrap();
                                 self.bin_buffer.push(reg_ind);
                             } else {
@@ -299,16 +297,16 @@ impl VoxAssembly {
                 continue;
             }
             for arg in &lexems[1..] {
-                if (arg.contains("#") || (arg == &";")) {
+                if arg.contains("#") || (arg == &";") {
                     break;
                 }
 
-                if (arg.contains("r")) {
+                if arg.contains("r") {
                     let reg_ind: u8 = arg[1..].parse().unwrap();
                     self.bin_buffer.push(reg_ind);
                     continue;
                 }
-                if (arg.contains(".")) {
+                if arg.contains(".") {
                     let val: f64 = arg.parse().unwrap();
                     let res = val.to_be_bytes();
                     self.bin_buffer.extend_from_slice(&res);
@@ -320,20 +318,20 @@ impl VoxAssembly {
                     is_signed = true;
                 }
 
-                let mut res: [u8; 8];
-                let mut signed_res: i64;
-                let mut unsigned_res: u64;
+                let res: [u8; 8];
+                let signed_res: i64;
+                let unsigned_res: u64;
                 let mut num_sys: u32 = 10;
                 let mut bytes_limit: usize = 8;
 
-                if (opcode == 0x1) {
+                if opcode == 0x1 {
                     bytes_limit = 2;
                 }
-                if (arg.to_lowercase().contains("0x")) {
+                if arg.to_lowercase().contains("0x") {
                     num_sys = 16;
                 }
 
-                if (is_signed) {
+                if is_signed {
                     signed_res = i64::from_str_radix(arg, num_sys).unwrap();
                     res = signed_res.to_be_bytes();
                 } else {
@@ -344,7 +342,7 @@ impl VoxAssembly {
                     .extend_from_slice(&res[res.len() - bytes_limit..]);
             }
         }
-        if (self.is_vve) {
+        if self.is_vve {
             self.do_vve();
         } else {
             self.do_vvr();
@@ -372,21 +370,21 @@ impl VoxAssembly {
                 continue;
             }
 
-            if (lexems[0] == "label") {
+            if lexems[0] == "label" {
                 self.save_label(lexems[1].to_string());
                 continue;
-            } else if (lexems[0] == ".start") {
+            } else if lexems[0] == ".start" {
                 self.entry = self.cur_addr;
                 continue;
-            } else if (lexems[0].contains("#") || lexems[0] == ";") {
+            } else if lexems[0].contains("#") || lexems[0] == ";" {
                 continue;
-            } else if (lexems[0] == "section" && lexems[1] == "data") {
+            } else if lexems[0] == "section" && lexems[1] == "data" {
                 //println!("DBG CURADDR: {}", self.cur_addr);
                 self.data_start = self.cur_addr;
                 self.cursect = CurrentSection::Data;
-            } else if (lexems[0] == "section" && lexems[1] == "text") {
+            } else if lexems[0] == "section" && lexems[1] == "text" {
                 self.cursect = CurrentSection::Code;
-            } else if (self.cursect == CurrentSection::Data) {
+            } else if self.cursect == CurrentSection::Data {
                 let var_type: u8 = match detect_ds_var_type(lexems[1]) {
                     Some(val) => val,
                     None => panic!("Unknown var type: {}", lexems[1]),
@@ -418,7 +416,12 @@ impl VoxAssembly {
                 self.cur_addr += 1 + var_size;
                 self.data_size += 1 + var_size;
             } else {
-                let instr_data = self.instr_table.get(lexems[0]).unwrap();
+                let instr_data = match self.instr_table.get(lexems[0]) {
+                    Some(v) => v,
+                    None => {
+                        panic!("Unknown operation: '{}'", lexems[0]);
+                    }
+                };
                 let instr_size = match instr_data[1] {
                     LexTypes::Size(val) => val,
                     _ => {
@@ -522,7 +525,8 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "dsderef".to_string() => vec![LexTypes::Op(0x75), LexTypes::Size(11), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Addr(0)],
         "dsrlea".to_string() => vec![LexTypes::Op(0x76), LexTypes::Size(11), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Addr(0)],
         "dsrderef".to_string() => vec![LexTypes::Op(0x77), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
-
+        "push".to_string() => vec![LexTypes::Op(0x80), LexTypes::Size(2), LexTypes::Reg(0)],
+        "pop".to_string() => vec![LexTypes::Op(0x81), LexTypes::Size(2), LexTypes::Reg(0)],
     }
 }
 fn get_text_length(input: &str) -> Result<usize, &'static str> {
@@ -571,9 +575,9 @@ where
 
 pub fn u64_from_str_auto(s: &str) -> u64 {
     let mut radix: u32 = 10;
-    if (s.contains("0x")) {
+    if s.contains("0x") {
         radix = 16;
-    } else if (s.contains("0b")) {
+    } else if s.contains("0b") {
         radix = 2;
     }
 
