@@ -1,1 +1,1 @@
-functions, call stack?
+heap?

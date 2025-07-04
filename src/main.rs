@@ -5,25 +5,29 @@ use vm::VM;
 
 mod assembly;
 mod fileformats;
+mod func_ops;
 mod stack;
 mod vm;
 
 fn main() {
-    const DEFAULT_INIT_RAM: usize = 4096;
+    const DEFAULT_INIT_RAM: usize = 1024 * 1024 * 1; // 1 MB + stack + heap
     const DEFAULT_INIT_STACK: usize = DEFAULT_INIT_RAM / 2;
     const DEFAULT_INIT_HEAP: usize = DEFAULT_INIT_RAM / 2;
+    const DEFAULT_RECURSION_LIMIT: usize = 1000;
     let mut ram_size: Option<usize> = None;
     let mut stack_size: Option<usize> = None;
     let mut heap_size: Option<usize> = None;
 
     let mut vvr_filename: Option<String> = None;
     let mut vve_filename: Option<String> = None;
-    const MIN_VVE_VERSION: u16 = 2;
+    const MIN_VVE_VERSION: u16 = 3;
 
     let mut vas_input_filename: Option<String> = None;
     let mut vas_out_filename: Option<String> = None;
 
     let mut coredump_on_exit: bool = false;
+
+    let mut recursion_depth_limit: Option<usize> = None;
 
     for arg in env::args() {
         if let Some(val) = arg.strip_prefix("--init-ram=") {
@@ -88,6 +92,14 @@ fn main() {
         if let Some(val) = arg.strip_prefix("--coredump_exit") {
             coredump_on_exit = true;
         }
+        if let Some(val) = arg.strip_prefix("--max-recursion=") {
+            match val.parse::<usize>() {
+                Ok(v) => {
+                    recursion_depth_limit = Some(v);
+                }
+                Err(_) => {}
+            }
+        }
     }
 
     match vas_input_filename {
@@ -132,7 +144,12 @@ fn main() {
         }
     }
 
-    let mut vm_instance = VM::new(ram_size.unwrap(), stack_size.unwrap(), heap_size.unwrap());
+    let mut vm_instance = VM::new(
+        ram_size.unwrap(),
+        stack_size.unwrap(),
+        heap_size.unwrap(),
+        recursion_depth_limit.unwrap_or(DEFAULT_RECURSION_LIMIT),
+    );
     let curdir = env::current_dir().unwrap();
 
     match vvr_filename {

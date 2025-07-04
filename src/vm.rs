@@ -2,7 +2,8 @@
 
 use crate::{
     fileformats::VoxExeHeader,
-    stack::{op_pop, op_push},
+    func_ops::{op_call, op_ret},
+    stack::{op_pop, op_popall, op_push, op_pushall},
 };
 use core::panic;
 use std::{
@@ -38,12 +39,20 @@ pub struct VM {
     nativecalls: std::collections::HashMap<u16, NativeFn>,
     running: bool,
     float_epsilon: f64,
+    pub func_table: Vec<u64>,
+    pub call_stack: Vec<u64>,
+    pub rec_depth_max: usize,
 }
 type NativeFn = fn(&mut VM, &[u64]) -> Result;
 type InstructionHandler = fn(&mut VM);
 
 impl VM {
-    pub fn new(init_mem: usize, init_stack: usize, init_heap: usize) -> VM {
+    pub fn new(
+        init_mem: usize,
+        init_stack: usize,
+        init_heap: usize,
+        max_recursion_depth: usize,
+    ) -> VM {
         VM {
             registers: [0; 32],
             reg_types: [RegTypes::uint64; 32],
@@ -59,6 +68,9 @@ impl VM {
             nativecalls: HashMap::new(),
             running: true,
             float_epsilon: 1e-10,
+            func_table: Vec::new(),
+            call_stack: Vec::new(),
+            rec_depth_max: max_recursion_depth,
         }
     }
     pub fn load_vvr(&mut self, input_file_name: &str) {
@@ -80,13 +92,13 @@ impl VM {
     pub fn load_vve(&mut self, input_file_name: &str, minVveVersion: u16) {
         // vve = voxvm executable
         let fileHeader: VoxExeHeader = VoxExeHeader::load(input_file_name, minVveVersion).unwrap();
-        //println!("DBG Entry: {}", fileHeader.entry_point);
 
-        let header_size: usize = 38;
+        let header_size: usize = (0x30 + fileHeader.func_table_len * 16) as usize;
         self.ip = fileHeader.entry_point as usize;
         self.data_base = fileHeader.data_base;
         self.data_size = fileHeader.data_size;
         let mut bctr: usize = 0;
+        self.func_table = fileHeader.func_table.clone();
 
         match fs::read(input_file_name) {
             Ok(bytes) => {
@@ -184,6 +196,10 @@ impl VM {
         handlers[0x77] = Self::op_dsrderef as InstructionHandler;
         handlers[0x80] = op_push as InstructionHandler;
         handlers[0x81] = op_pop as InstructionHandler;
+        handlers[0x82] = op_pushall as InstructionHandler;
+        handlers[0x83] = op_popall as InstructionHandler;
+        handlers[0x90] = op_call as InstructionHandler;
+        handlers[0x91] = op_ret as InstructionHandler;
         // ...
         handlers
     };
@@ -1070,7 +1086,8 @@ impl VM {
             args_to_u64(&self.memory[(self.ip + 2 as usize)..(self.ip + 10 as usize)]) as usize; // relative address of target variable in VM memory
         let offset: usize =
             args_to_u64(&self.memory[(self.ip + 10 as usize)..(self.ip + 18 as usize)]) as usize
-                + 8; // 8 for length skip
+                + 8
+                + 1; // 8 for length skip, 1 for type
         let abs_addr: usize = (self.data_base as usize) + rel_addr + offset; // absolute addr.
         let mut var_type_ind: u8 = self.memory[abs_addr - offset];
         if var_type_ind >= 0x6 && var_type_ind <= 0x8 {
@@ -1108,7 +1125,7 @@ impl VM {
             }
             RegTypes::StrAddr => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = abs_addr as u64; // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::StrAddr;
             }
             RegTypes::address => {
@@ -1127,7 +1144,7 @@ impl VM {
         // dsload Rdest Roffset reladdr
 
         let offset: usize =
-            self.registers[self.memory[(self.ip + 2) as usize] as usize] as usize + 8; // 8 for
+            self.registers[self.memory[(self.ip + 2) as usize] as usize] as usize + 8 + 1; // 8 for
         // length skip
         let rel_addr: usize =
             args_to_u64(&self.memory[(self.ip + 3 as usize)..(self.ip + 11 as usize)]) as usize; // relative address of target variable in VM memory
@@ -1168,7 +1185,7 @@ impl VM {
             }
             RegTypes::StrAddr => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = abs_addr as u64; // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::StrAddr;
             }
             RegTypes::address => {
@@ -1351,8 +1368,6 @@ impl VM {
                 println!("vm memory address: {:#x}", val);
             }
             RegTypes::StrAddr => {
-                //let rel_addr: u64 = self.registers[src_r_num as usize];
-                //let abs_addr: u64 = self.data_base + rel_addr;
                 let abs_addr: u64 = self.registers[src_r_num as usize];
                 let bytes_len = &self.memory[((abs_addr - 8) as usize)..((abs_addr) as usize)];
                 let size: u64 = u64::from_be_bytes(bytes_len.try_into().unwrap());

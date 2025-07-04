@@ -1,35 +1,52 @@
 section text
 .start
-    ; simple stress test with 100 stack push/pops
+    #uload r1 100
+    #push r1
+    #call @rec_countdown
+    #pop r1
 
-    uload r1 0 ; counter
-    uload r2 100 ; max
-    uload r3 1 ; inc
-    uload r4 31 ; val
-
-    label loop_push
-        ucmp r1 r2
-        jz loop_push_exit
-
-        push r4
-
-        uadd r1 r3
-        jmp loop_push
-
-    label loop_push_exit
-        xor r1 r1
-        jmp loop_pop
-
-    label loop_pop
-        ucmp r1 r2
-        jz exit
-
-        pop r5
-
-        uadd r1 r3
-        jmp loop_pop
-
-    label exit
-        ncall 1 r5
+    uload r0 15
+    call @factorial
+    ncall 1 r0
 
     halt
+
+func rec_countdown
+    uload r2 0
+    ucmp r1 r2
+    uload r3 1
+    jz base_case
+
+    ncall 1 r1
+    usub r1 r3
+    call @rec_countdown
+
+    label base_case
+        ret
+
+func factorial
+    uload r1 0
+    ucmp r0 r1
+    jz base_case
+
+    push r0
+    push r1
+
+    uload r1 1
+    usub r0 r1
+    call @factorial
+
+    pop r1
+    pop r1
+    umul r0 r1
+    ret
+
+    label base_case
+        uload r0 1
+        ret
+
+func factorial_base
+    ret
+
+section data
+    test_str str "Hello, world!"

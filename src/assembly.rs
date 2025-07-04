@@ -2,6 +2,7 @@ use core::panic;
 use maplit::hashmap;
 use regex::Regex;
 use std::{
+    clone,
     collections::HashMap,
     fs::{File, OpenOptions},
     io::{BufRead, BufReader, Read, Seek, Write},
@@ -41,6 +42,8 @@ pub struct VoxAssembly {
     is_vve: bool,
     cursect: CurrentSection,
     data_size: u64,
+    func_table: HashMap<String, u64>,
+    func_indices: HashMap<String, u64>,
 }
 
 impl VoxAssembly {
@@ -74,6 +77,9 @@ impl VoxAssembly {
             Err(err) => panic!("ERROR: While opening input voxasm file: {}", err),
         }
 
+        let func_table: HashMap<String, u64> = HashMap::new();
+        let func_indices: HashMap<String, u64> = HashMap::new();
+
         VoxAssembly {
             cur_addr: 0x0,
             entry: default_entry,
@@ -88,6 +94,8 @@ impl VoxAssembly {
             is_vve: is_vve,
             cursect: CurrentSection::None,
             data_size: 0,
+            func_table: func_table,
+            func_indices: func_indices,
         }
     }
 
@@ -113,7 +121,7 @@ impl VoxAssembly {
             //println!("DBG Lexems: {}", lexems.join(", "));
             if (lexems[0] == "label")
                 || (lexems[0] == ".start")
-                || (lexems[0].contains("#") || (lexems[0] == ";"))
+                || (lexems[0].contains("#") || (lexems[0] == ";") || (lexems[0] == "func"))
             {
                 continue;
             }
@@ -171,8 +179,9 @@ impl VoxAssembly {
                             line_num
                         ));
                         let end = start + 1 + rel_end;
-                        len_ctr = (line[start + 1..end].encode_utf16().count() * 2) as u64; // utf16 bytes
-                        for c in line[start + 1..end].chars() {
+                        let text = &line[start + 1..end];
+                        len_ctr = (text.encode_utf16().count() * 2) as u64; // utf16 bytes
+                        for c in text.chars() {
                             let mut buf = [0u16; 2];
                             let utf16 = c.encode_utf16(&mut buf);
                             let utf16_bytes = utf16[0].to_be_bytes();
@@ -296,6 +305,28 @@ impl VoxAssembly {
                 }
                 continue;
             }
+            if opcode == 0x90 {
+                if lexems.len() < 2 {
+                    panic!(
+                        "{}: Call should be used with function name or ind",
+                        line_num
+                    );
+                }
+                let mut func_ind: u64;
+                if lexems[1].contains('@') {
+                    let funcname = lexems[1][1..].to_string();
+                    func_ind = match self.func_indices.get(&funcname.clone()) {
+                        Some(n) => *n,
+                        None => {
+                            panic!("{}: No function named '{}' found", line_num, funcname);
+                        }
+                    };
+                } else {
+                    func_ind = u64_from_str_auto(lexems[1]);
+                }
+                self.bin_buffer.extend_from_slice(&func_ind.to_be_bytes());
+                continue;
+            }
             for arg in &lexems[1..] {
                 if arg.contains("#") || (arg == &";") {
                     break;
@@ -361,12 +392,29 @@ impl VoxAssembly {
         return;
     }
 
+    fn save_function(&mut self, funcname: String, abs_addr: u64) {
+        self.func_table.insert(funcname.clone(), abs_addr);
+        self.func_indices
+            .insert(funcname, self.func_indices.len() as u64);
+    }
+
     fn first_stage(&mut self) {
         let lines: Vec<_> = self.read_buffer.by_ref().lines().collect();
-        for line in lines {
+        for (line_num, line) in lines.into_iter().enumerate() {
             let line = line.unwrap();
             let lexems: Vec<&str> = line.trim().split_whitespace().collect();
             if lexems.is_empty() {
+                continue;
+            }
+
+            if lexems[0] == "func" {
+                let funcname: String = match lexems.get(1) {
+                    Some(name) => name.to_string(),
+                    None => {
+                        panic!("{}: Function has no name", line_num);
+                    }
+                };
+                self.save_function(funcname, self.cur_addr);
                 continue;
             }
 
@@ -387,7 +435,7 @@ impl VoxAssembly {
             } else if self.cursect == CurrentSection::Data {
                 let var_type: u8 = match detect_ds_var_type(lexems[1]) {
                     Some(val) => val,
-                    None => panic!("Unknown var type: {}", lexems[1]),
+                    None => panic!("{}: Unknown var type: {}", line_num, lexems[1]),
                 };
                 self.save_data_label(lexems[0].to_string());
                 let var_size: u64 = match var_type {
@@ -411,7 +459,7 @@ impl VoxAssembly {
                         //println!("array size contained: {}", size_contained);
                         8 + size_contained
                     }
-                    _ => panic!("Unknown var size of: {}", var_type),
+                    _ => panic!("{}: Unknown var size of: {}", line_num, var_type),
                 };
                 self.cur_addr += 1 + var_size;
                 self.data_size += 1 + var_size;
@@ -419,17 +467,19 @@ impl VoxAssembly {
                 let instr_data = match self.instr_table.get(lexems[0]) {
                     Some(v) => v,
                     None => {
-                        panic!("Unknown operation: '{}'", lexems[0]);
+                        panic!("{}: Unknown operation: '{}'", lexems[0], line_num);
                     }
                 };
                 let instr_size = match instr_data[1] {
                     LexTypes::Size(val) => val,
                     _ => {
-                        eprintln!("Error parsing inside label parse: can't fetch instr_size");
+                        eprintln!(
+                            "{}: Error parsing inside label parse: can't fetch instr_size",
+                            line_num
+                        );
                         0
                     }
                 };
-                //println!("DBG INSTR SIZE: {}", instr_size);
                 self.cur_addr += instr_size;
             }
         }
@@ -443,19 +493,40 @@ impl VoxAssembly {
     }
 
     fn do_vve(&mut self) {
-        const VVE_VERSION: u16 = 2;
+        const VVE_VERSION: u16 = 3;
         let header: VoxExeHeader = VoxExeHeader::new(
             VVE_VERSION,
             self.entry,
             self.data_start,
             0, // this fields currently unudsed
             0,
+            self.make_fn_table(),
         );
         VoxExeHeader::write_existing(&mut self.output_file, &header);
+        // println!(
+        //     "File seek at asm: {:#x}",
+        //     self.output_file.stream_position().unwrap()
+        // );
         match self.output_file.write_all(&self.bin_buffer) {
             Ok(_) => return,
             Err(err) => panic!("ERR: While writing bytecode into output .vve file: {}", err),
         }
+    }
+
+    fn make_fn_table(&mut self) -> Vec<u64> {
+        let mut res: Vec<u64> = vec![0; self.func_indices.len()];
+        for (name, ind) in self.func_indices.iter() {
+            res[*ind as usize] = match self.func_table.get(name) {
+                Some(addr) => *addr,
+                None => {
+                    panic!(
+                        "Linking functions error: {} function could not be found",
+                        name
+                    );
+                }
+            }
+        }
+        res
     }
 }
 
@@ -527,6 +598,10 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "dsrderef".to_string() => vec![LexTypes::Op(0x77), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
         "push".to_string() => vec![LexTypes::Op(0x80), LexTypes::Size(2), LexTypes::Reg(0)],
         "pop".to_string() => vec![LexTypes::Op(0x81), LexTypes::Size(2), LexTypes::Reg(0)],
+        "pushall".to_string() => vec![LexTypes::Op(0x82), LexTypes::Size(1)],
+        "popall".to_string() => vec![LexTypes::Op(0x83), LexTypes::Size(1)],
+        "call".to_string() => vec![LexTypes::Op(0x90), LexTypes::Size(9), LexTypes::Value(0)],
+        "ret".to_string() => vec![LexTypes::Op(0x91), LexTypes::Size(1)]
     }
 }
 fn get_text_length(input: &str) -> Result<usize, &'static str> {
