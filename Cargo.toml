@@ -1,6 +1,6 @@
 [package]
 name = "voxvm"
-version = "0.1.0"
+version = "0.6.0-pre1"
 edition = "2024"
 
 [dependencies]
@@ -10,3 +10,4 @@ serde_json = "1.0"
 log = "0.4"
 maplit = "1.0.2"
 regex = "1.11.1"
+rand = "0.9.1"

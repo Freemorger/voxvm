@@ -1,52 +1,47 @@
 section text
 .start
-    #uload r1 100
-    #push r1
-    #call @rec_countdown
-    #pop r1
+    uload r1 0 ; ctr
+    uload r2 1000 ; max
+    uload r3 1 ; inc
+    uload r5 15 ; to load
+    uload r8 8 ; factor
 
-    uload r0 15
-    call @factorial
-    ncall 1 r0
+    label loop
+        ucmp r1 r2
+        jz @loop1_exit
 
-    halt
+        alloc r4 64
+        jexc @heap_allocation_fault @fail_alloc
+        store r4 r5
+        jexc @heap_write_fault @fail_write
+        #free r4
+        #jexc @heap_free_fault @fail_free
 
-func rec_countdown
-    uload r2 0
-    ucmp r1 r2
-    uload r3 1
-    jz base_case
+        uadd r1 r3
+        jmp @loop
 
-    ncall 1 r1
-    usub r1 r3
-    call @rec_countdown
+    label loop1_exit
 
-    label base_case
-        ret
 
-func factorial
-    uload r1 0
-    ucmp r0 r1
-    jz base_case
+    label exit
+        halt
 
-    push r0
-    push r1
+    label fail_alloc
+        dsload r3 fail_msg 0
+        ncall 1 r3
+        halt
 
-    uload r1 1
-    usub r0 r1
-    call @factorial
+    label fail_free
+        dsload r3 fail_free_msg 0
+        ncall 1 r3
+        halt
 
-    pop r1
-    pop r1
-    umul r0 r1
-    ret
-
-    label base_case
-        uload r0 1
-        ret
-
-func factorial_base
-    ret
+    label fail_write
+        dsload r3 fail_write_msg 0
+        ncall 1 r3
+        halt
 
 section data
-    test_str str "Hello, world!"
+    fail_msg str "heap allocation fault"
+    fail_free_msg str "heap free fault"
+    fail_write_msg str "heap write err"

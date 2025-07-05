@@ -4,8 +4,10 @@ use assembly::VoxAssembly;
 use vm::VM;
 
 mod assembly;
+mod exceptions;
 mod fileformats;
 mod func_ops;
+mod heap;
 mod stack;
 mod vm;
 

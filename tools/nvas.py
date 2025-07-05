@@ -1,4 +1,4 @@
-# vvas.py will be deprecated soon. 
+# vvas.py is deprecated.
 # Not all features may be available in vvas.py.
 # Consider using vvas2 in voxvm --vvas=...
 

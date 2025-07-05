@@ -1,4 +1,11 @@
 # Simple Virutal machine using 64-bit registers, static typization, etc.
+## Features
+- Own and simple bytecode
+- Powerful heap allocator with custom "Split/merge first-fit" strategy
+- Bytecode assembly
+- .vve (voxvm executable) file format
+- It's (comparably) fast :D   [10x faster then python in my tests, at least]
+- full docs will be available ~once~ soon
 
 ## Usage:
 ```
@@ -24,7 +31,7 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
 | data segment          | [X]            |
 | stack                 | [X]            |
 | functions, call stack | [X]            |
-| heap                  | []            |
+| heap                  | [~]            |
 | GC                    | []            |
 | better ffi            | []            |
 | soon more..           | []             |

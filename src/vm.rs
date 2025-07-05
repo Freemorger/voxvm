@@ -1,8 +1,10 @@
 #![allow(non_snake_case)]
 
 use crate::{
+    exceptions::Exception,
     fileformats::VoxExeHeader,
-    func_ops::{op_call, op_ret},
+    func_ops::{op_call, op_callr, op_fnstind, op_ret},
+    heap::{Heap, op_alloc, op_allocr, op_free, op_store},
     stack::{op_pop, op_popall, op_push, op_pushall},
 };
 use core::panic;
@@ -21,6 +23,7 @@ pub enum RegTypes {
     float64 = 3,
     StrAddr = 4,
     address = 5,
+    ds_addr = 6,
 }
 
 #[derive(Debug)]
@@ -31,9 +34,8 @@ pub struct VM {
     pub ip: usize,
     pub memory: Vec<u8>, // dividing by each bytes, then can be grouped
     pub stack: Vec<u64>,
-    sp: u64,       // stack pointer
-    heap: Vec<u8>, // same w normal mem
-    heap_ptr: u64,
+    sp: u64, // stack pointer
+    pub heap: Heap,
     data_base: u64, // pointer at data segment start
     data_size: u64,
     nativecalls: std::collections::HashMap<u16, NativeFn>,
@@ -42,6 +44,7 @@ pub struct VM {
     pub func_table: Vec<u64>,
     pub call_stack: Vec<u64>,
     pub rec_depth_max: usize,
+    pub exceptions_active: Vec<Exception>,
 }
 type NativeFn = fn(&mut VM, &[u64]) -> Result;
 type InstructionHandler = fn(&mut VM);
@@ -58,11 +61,10 @@ impl VM {
             reg_types: [RegTypes::uint64; 32],
             flags: [0; 4],
             ip: 0x0,
-            memory: vec![0; init_mem],
-            stack: vec![0; init_stack],
+            memory: Vec::with_capacity(init_mem),
+            stack: Vec::with_capacity(init_stack),
             sp: 0x0,
-            heap: vec![0; init_heap],
-            heap_ptr: 0x0,
+            heap: Heap::new(init_heap),
             data_base: 0x0,
             data_size: 0,
             nativecalls: HashMap::new(),
@@ -71,6 +73,7 @@ impl VM {
             func_table: Vec::new(),
             call_stack: Vec::new(),
             rec_depth_max: max_recursion_depth,
+            exceptions_active: Vec::new(),
         }
     }
     pub fn load_vvr(&mut self, input_file_name: &str) {
@@ -97,14 +100,12 @@ impl VM {
         self.ip = fileHeader.entry_point as usize;
         self.data_base = fileHeader.data_base;
         self.data_size = fileHeader.data_size;
-        let mut bctr: usize = 0;
         self.func_table = fileHeader.func_table.clone();
 
         match fs::read(input_file_name) {
             Ok(bytes) => {
                 for byte in &bytes[header_size..] {
-                    self.memory[bctr] = *byte;
-                    bctr += 1;
+                    self.memory.push(*byte);
                 }
             }
             Err(err) => {
@@ -173,6 +174,7 @@ impl VM {
         handlers[0x43] = Self::op_jg as InstructionHandler;
         handlers[0x44] = Self::op_jge as InstructionHandler;
         handlers[0x45] = Self::op_jle as InstructionHandler;
+        handlers[0x46] = Self::op_jexc as InstructionHandler;
         handlers[0x50] = Self::op_utoi as InstructionHandler;
         handlers[0x51] = Self::op_itou as InstructionHandler;
         handlers[0x52] = Self::op_utof as InstructionHandler;
@@ -200,13 +202,20 @@ impl VM {
         handlers[0x83] = op_popall as InstructionHandler;
         handlers[0x90] = op_call as InstructionHandler;
         handlers[0x91] = op_ret as InstructionHandler;
+        handlers[0x92] = op_fnstind as InstructionHandler;
+        handlers[0x93] = op_callr as InstructionHandler;
+        handlers[0xA0] = op_alloc as InstructionHandler;
+        handlers[0xA1] = op_free as InstructionHandler;
+        handlers[0xA2] = op_store as InstructionHandler;
+        handlers[0xA3] = op_allocr as InstructionHandler;
         // ...
         handlers
     };
 
     fn op_unimplemented(&mut self) {
+        //self.err_coredump();
         panic!(
-            "CRITICAL: Unknown operation code at {}: {}",
+            "CRITICAL: Unknown operation code at {:#x}: {:#x}.",
             self.ip, self.memory[self.ip]
         );
     }
@@ -859,6 +868,35 @@ impl VM {
         }
     }
 
+    fn op_jexc(&mut self) {
+        // 0x46, size: 17
+        // jexc exception_num addr
+        // jumps at addr if exception was thrown
+        let exc_n = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
+        let tojump = args_to_u64(&self.memory[(self.ip + 9)..(self.ip + 17)]);
+
+        let exception: Exception = match exc_n {
+            0x1 => Exception::ZeroDivision,
+            0x2 => Exception::HeapAllocationFault,
+            0x3 => Exception::HeapFreeFault,
+            0x4 => Exception::HeapWriteFault,
+            other => {
+                panic!("Unknown exception: {} at IP {}", other, self.ip);
+            }
+        };
+
+        for (ind, ex) in self.exceptions_active.iter().enumerate() {
+            if *ex == exception {
+                self.ip = tojump as usize;
+                self.exceptions_active.remove(ind);
+                return;
+            }
+        }
+
+        self.ip += 17;
+        return;
+    }
+
     fn op_utoi(&mut self) {
         // 0x50, size: 3
         // Transfers unsigned integer UINT64 into signed integer INT64
@@ -1107,19 +1145,19 @@ impl VM {
             RegTypes::uint64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 self.registers[dest_reg_ind as usize] =
-                    args_to_u64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                    args_to_u64(&self.memory[(abs_addr)..(abs_addr + 8)]);
 
                 self.reg_types[dest_reg_ind as usize] = RegTypes::uint64;
             }
             RegTypes::int64 => {
-                let res: i64 = args_to_i64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                let res: i64 = args_to_i64(&self.memory[(abs_addr)..(abs_addr + 8)]);
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 self.registers[dest_reg_ind as usize] = res as u64;
                 self.reg_types[dest_reg_ind as usize] = RegTypes::int64;
             }
             RegTypes::float64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                let res: f64 = args_to_f64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                let res: f64 = args_to_f64(&self.memory[(abs_addr)..(abs_addr + 8)]);
                 self.registers[dest_reg_ind as usize] = res.to_bits();
                 self.reg_types[dest_reg_ind as usize] = RegTypes::float64;
             }
@@ -1130,8 +1168,13 @@ impl VM {
             }
             RegTypes::address => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::address;
+            }
+            RegTypes::ds_addr => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
+                self.reg_types[dest_reg_ind as usize] = RegTypes::ds_addr;
             }
         }
 
@@ -1167,19 +1210,19 @@ impl VM {
             RegTypes::uint64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 self.registers[dest_reg_ind as usize] =
-                    args_to_u64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                    args_to_u64(&self.memory[(abs_addr)..(abs_addr + 8)]);
                 self.reg_types[dest_reg_ind as usize] = RegTypes::uint64;
                 //println!("DBG start addr: {}", abs_addr + 2);
             }
             RegTypes::int64 => {
-                let res: i64 = args_to_i64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                let res: i64 = args_to_i64(&self.memory[(abs_addr)..(abs_addr + 8)]);
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 self.registers[dest_reg_ind as usize] = res as u64;
                 self.reg_types[dest_reg_ind as usize] = RegTypes::int64;
             }
             RegTypes::float64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                let res: f64 = args_to_f64(&self.memory[(abs_addr + 1)..(abs_addr + 9)]);
+                let res: f64 = args_to_f64(&self.memory[(abs_addr)..(abs_addr + 8)]);
                 self.registers[dest_reg_ind as usize] = res.to_bits();
                 self.reg_types[dest_reg_ind as usize] = RegTypes::float64;
             }
@@ -1190,8 +1233,13 @@ impl VM {
             }
             RegTypes::address => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr + 8 + 1) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::address;
+            }
+            RegTypes::ds_addr => {
+                let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
+                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
+                self.reg_types[dest_reg_ind as usize] = RegTypes::ds_addr;
             }
         }
 
@@ -1212,6 +1260,18 @@ impl VM {
         match self.reg_types[r_src_ind] {
             RegTypes::uint64 => {
                 let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
+                for i in 0..8 {
+                    self.memory[abs_addr + i] = val[i];
+                }
+            }
+            RegTypes::int64 => {
+                let val: [u8; 8] = (self.registers[r_src_ind] as i64).to_be_bytes();
+                for i in 0..8 {
+                    self.memory[abs_addr + i] = val[i];
+                }
+            }
+            RegTypes::float64 => {
+                let val: [u8; 8] = (self.registers[r_src_ind] as f64).to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
@@ -1256,7 +1316,7 @@ impl VM {
 
         let abs_addr: u64 = self.data_base + rel_addr + offset;
         self.registers[r_dest_ind] = abs_addr;
-        self.reg_types[r_dest_ind] = RegTypes::address;
+        self.reg_types[r_dest_ind] = RegTypes::ds_addr;
 
         self.ip += 18;
         return;
@@ -1307,7 +1367,7 @@ impl VM {
 
         let abs_addr: u64 = self.data_base + rel_addr + offset;
         self.registers[r_dest_ind] = abs_addr;
-        self.reg_types[r_dest_ind] = RegTypes::address;
+        self.reg_types[r_dest_ind] = RegTypes::ds_addr;
 
         self.ip += 11;
         return;
@@ -1341,7 +1401,13 @@ impl VM {
             0x3 | 0x7 => RegTypes::float64,
             0x4 => RegTypes::StrAddr, //wont be reached anyway
             other => {
-                panic!("Unknown data type: {}", other);
+                self.err_coredump();
+                panic!(
+                    "Unknown data type: {} at IP = {:#x}, src val at {:#x}",
+                    other,
+                    self.ip,
+                    src_val - offset
+                );
             }
         };
 
@@ -1365,7 +1431,11 @@ impl VM {
             }
             RegTypes::address => {
                 let val: u64 = self.registers[src_r_num as usize];
-                println!("vm memory address: {:#x}", val);
+                println!("vm heap memory address: {:#x}", val);
+            }
+            RegTypes::ds_addr => {
+                let val: u64 = self.registers[src_r_num as usize];
+                println!("vm data segment memory address: {:#x}", val);
             }
             RegTypes::StrAddr => {
                 let abs_addr: u64 = self.registers[src_r_num as usize];
@@ -1391,18 +1461,16 @@ impl VM {
     pub fn coredump(&mut self) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         let zeros: Vec<u8> = vec![0; 16];
-        res.extend(&self.memory.clone());
+        res.extend(&clone_placed(&self.memory));
         res.extend(&(zeros.clone()));
 
-        let stack_u8_cl: Vec<u8> = self
-            .stack
-            .clone()
+        let stack_u8_cl: Vec<u8> = clone_placed_64(&self.stack)
             .iter()
             .flat_map(|num| num.to_be_bytes())
             .collect();
         res.extend(&stack_u8_cl);
         res.extend(&zeros);
-        res.extend(&(self.heap));
+        res.extend(&(clone_placed(&self.heap.heap)));
         res
     }
     fn err_coredump(&mut self) -> std::result::Result<(), String> {
@@ -1461,4 +1529,20 @@ pub fn u8_slice_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
         .chunks(2)
         .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
         .collect()
+}
+
+pub fn clone_placed(toclone: &Vec<u8>) -> Vec<u8> {
+    let mut res: Vec<u8> = Vec::new();
+    for i in 0..toclone.len() {
+        res.push(toclone[i].clone());
+    }
+    res
+}
+
+pub fn clone_placed_64(toclone: &Vec<u64>) -> Vec<u64> {
+    let mut res: Vec<u64> = Vec::new();
+    for i in 0..toclone.len() {
+        res.push(toclone[i].clone());
+    }
+    res
 }

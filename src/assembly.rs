@@ -9,7 +9,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::fileformats::VoxExeHeader;
+use crate::{fileformats::VoxExeHeader, func_ops};
 //use crate::fileformats::VoxExeHeader;
 
 enum LexTypes {
@@ -19,6 +19,8 @@ enum LexTypes {
     Reg(u8),
     Addr(u64),
     Value(u64),
+    FuncInd(u64),
+    Exception(u64),
 }
 
 #[derive(PartialEq)]
@@ -44,6 +46,7 @@ pub struct VoxAssembly {
     data_size: u64,
     func_table: HashMap<String, u64>,
     func_indices: HashMap<String, u64>,
+    exception_table: HashMap<String, u64>,
 }
 
 impl VoxAssembly {
@@ -96,6 +99,7 @@ impl VoxAssembly {
             data_size: 0,
             func_table: func_table,
             func_indices: func_indices,
+            exception_table: get_exc_table(),
         }
     }
 
@@ -191,6 +195,18 @@ impl VoxAssembly {
                         self.bin_buffer.extend_from_slice(&tmp_utf16_buf);
                     }
                     0x6 => {
+                        if let Some(s) = lexems.get(2) {
+                            if s.starts_with("!zeros=") {
+                                let count: u64 = u64_from_str_auto(&s[7..].to_string());
+                                self.bin_buffer
+                                    .extend_from_slice(&(count * 8).to_be_bytes());
+                                let zero_64: u64 = 0;
+                                for i in 0..count {
+                                    self.bin_buffer.extend_from_slice(&zero_64.to_be_bytes());
+                                }
+                                continue;
+                            }
+                        }
                         let res_vec: Vec<u64> = match parse_array_string::<u64>(&line) {
                             Ok(res) => res,
                             Err(err) => {
@@ -263,17 +279,6 @@ impl VoxAssembly {
             };
             self.bin_buffer.push(opcode as u8);
 
-            if (opcode >= 0x40) && (opcode < 0x50) {
-                let get_addr = self.labels.get(lexems[1]);
-                let mut tgt_addr: u64 = 0;
-                match get_addr {
-                    Some(addr) => tgt_addr = *addr,
-                    None => tgt_addr = lexems[1].parse().unwrap(),
-                }
-                //println!("DBG Target addr: {}", tgt_addr);
-                self.bin_buffer.extend_from_slice(&tgt_addr.to_be_bytes());
-                continue;
-            }
             if (opcode >= 0x70) && (opcode < 0x80) {
                 for (i, dat) in instr_data[2..].iter().enumerate() {
                     let cur_lex = lexems[i + 1];
@@ -327,9 +332,61 @@ impl VoxAssembly {
                 self.bin_buffer.extend_from_slice(&func_ind.to_be_bytes());
                 continue;
             }
-            for arg in &lexems[1..] {
+            for (ind, arg) in lexems[1..].iter().enumerate() {
                 if arg.contains("#") || (arg == &";") {
                     break;
+                }
+
+                let cur_ind_dat = ind + 2; // skip opcode and size
+                let cur_type = instr_data.get(cur_ind_dat);
+                if let Some(LexTypes::FuncInd(_)) = cur_type {
+                    let mut func_ind: u64;
+                    if arg.contains('@') {
+                        let funcname = arg[1..].to_string();
+                        func_ind = match self.func_indices.get(&funcname.clone()) {
+                            Some(n) => *n,
+                            None => {
+                                panic!("{}: No function named '{}' found", line_num, funcname);
+                            }
+                        };
+                    } else {
+                        func_ind = u64_from_str_auto(arg);
+                    }
+                    self.bin_buffer.extend_from_slice(&func_ind.to_be_bytes());
+                    continue;
+                };
+                if let Some(LexTypes::Exception(_)) = cur_type {
+                    let mut exc_ind: u64;
+                    if arg.contains('@') {
+                        let exc_name = arg[1..].to_string();
+                        exc_ind = match self.exception_table.get(&exc_name.clone().to_lowercase()) {
+                            Some(n) => *n,
+                            None => {
+                                panic!("{}: No exception named '{}' found", line_num, exc_name);
+                            }
+                        };
+                    } else {
+                        exc_ind = u64_from_str_auto(arg);
+                    }
+                    self.bin_buffer.extend_from_slice(&exc_ind.to_be_bytes());
+                    continue;
+                };
+                if let Some(LexTypes::Addr(_)) = cur_type {
+                    let mut tgt_addr: u64;
+                    if arg.contains('@') {
+                        let label_name = arg[1..].to_string();
+                        tgt_addr = match self.labels.get(&label_name.clone()) {
+                            Some(n) => *n,
+                            None => {
+                                panic!("{}: No label named '{}' found", line_num, label_name);
+                            }
+                        };
+                    } else {
+                        tgt_addr = u64_from_str_auto(arg);
+                    }
+
+                    self.bin_buffer.extend_from_slice(&tgt_addr.to_be_bytes());
+                    continue;
                 }
 
                 if arg.contains("r") {
@@ -467,7 +524,7 @@ impl VoxAssembly {
                 let instr_data = match self.instr_table.get(lexems[0]) {
                     Some(v) => v,
                     None => {
-                        panic!("{}: Unknown operation: '{}'", lexems[0], line_num);
+                        panic!("{}: Unknown operation: '{}'", line_num, lexems[0]);
                     }
                 };
                 let instr_size = match instr_data[1] {
@@ -575,6 +632,7 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "jg".to_string() => vec![LexTypes::Op(0x43), LexTypes::Size(9), LexTypes::Addr(0)],
         "jge".to_string() => vec![LexTypes::Op(0x44), LexTypes::Size(9), LexTypes::Addr(0)],
         "jle".to_string() => vec![LexTypes::Op(0x45), LexTypes::Size(9), LexTypes::Addr(0)],
+        "jexc".to_string() => vec![LexTypes::Op(0x46), LexTypes::Size(17), LexTypes::Exception((0)), LexTypes::Addr(0)],
         "utoi".to_string() => vec![LexTypes::Op(0x50), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "itou".to_string() => vec![LexTypes::Op(0x51), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "utof".to_string() => vec![LexTypes::Op(0x52), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
@@ -601,9 +659,25 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "pushall".to_string() => vec![LexTypes::Op(0x82), LexTypes::Size(1)],
         "popall".to_string() => vec![LexTypes::Op(0x83), LexTypes::Size(1)],
         "call".to_string() => vec![LexTypes::Op(0x90), LexTypes::Size(9), LexTypes::Value(0)],
-        "ret".to_string() => vec![LexTypes::Op(0x91), LexTypes::Size(1)]
+        "ret".to_string() => vec![LexTypes::Op(0x91), LexTypes::Size(1)],
+        "fnstind".to_string() => vec![LexTypes::Op(0x92), LexTypes::Size(10), LexTypes::Reg((0)), LexTypes::FuncInd((0))],
+        "callr".to_string() => vec![LexTypes::Op(0x93), LexTypes::Size(2), LexTypes::Reg((0))],
+        "alloc".to_string() => vec![LexTypes::Op(0xA0), LexTypes::Size(10), LexTypes::Reg((0)), LexTypes::Value((0))],
+        "free".to_string() => vec![LexTypes::Op(0xA1), LexTypes::Size(2), LexTypes::Reg((0))],
+        "store".to_string() => vec![LexTypes::Op(0xA2), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "allocr".to_string() => vec![LexTypes::Op(0xA3), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
     }
 }
+
+fn get_exc_table() -> HashMap<String, u64> {
+    hashmap! {
+        "zero_division".to_string() => 0x1,
+        "heap_allocation_fault".to_string() => 0x2,
+        "heap_free_fault".to_string() => 0x3,
+        "heap_write_fault".to_string() => 0x4
+    }
+}
+
 fn get_text_length(input: &str) -> Result<usize, &'static str> {
     let start = match input.find('"') {
         Some(pos) => pos + 1,
