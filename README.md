@@ -31,8 +31,8 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
 | data segment          | [X]            |
 | stack                 | [X]            |
 | functions, call stack | [X]            |
-| heap                  | [~]            |
-| GC                    | []            |
+| heap                  | [X]            |
+| GC                    | [~]            |
 | better ffi            | []            |
 | soon more..           | []             |
 

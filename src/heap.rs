@@ -4,7 +4,7 @@ use rand::Rng;
 // On allocation: find the first free block with at least n bytes of size,
 // take only n bytes.
 // On free: free the block, merge freed block with other free blocks nearby
-use crate::vm::{RegTypes, VM, args_to_u64};
+use crate::vm::{RegTypes, VM, args_to_f64, args_to_i64, args_to_u64};
 
 #[derive(Debug)]
 pub struct Heap {
@@ -65,17 +65,6 @@ impl Heap {
 
         //Merging free blocks for less fragmentation
         let mut merges_count = 0;
-        // let mut inds_to_rm: Vec<usize> = Vec::new();
-        // for (ind, free_block) in self.free_list.iter_mut().enumerate() {
-        //     if free_block.last_byte == ptr.saturating_sub(1) as usize {
-        //         free_block.realloc(free_block.start_byte, freed_end.unwrap());
-        //         merges_count += 1;
-        //     }
-        //     if free_block.start_byte == (freed_end.unwrap() + 1) {
-        //         free_block.realloc(ptr as usize, free_block.last_byte);
-        //         merges_count += 1;
-        //     }
-        // }
         if merges_count == 0 {
             let new_free_block: HeapBlock = HeapBlock::new(ptr as usize, freed_end.unwrap());
             self.free_list.push(new_free_block);
@@ -150,6 +139,29 @@ impl Heap {
                     self.heap[(ptr as usize) + ind] = *byte_towrite;
                 }
                 return Ok(());
+            }
+        }
+        Err(())
+    }
+
+    pub fn read(&mut self, ptr: u64, count_bytes: u64) -> Result<Vec<u8>, ()> {
+        let last_toread = ptr + count_bytes.saturating_sub(1);
+        for alloced_block in &self.allocated {
+            // bounds check
+            if (ptr >= alloced_block.start_byte as u64)
+                && (ptr <= alloced_block.last_byte as u64)
+                && (last_toread <= alloced_block.last_byte as u64)
+            {
+                let mut res: Vec<u8> = Vec::new();
+
+                for i in ptr..last_toread.saturating_add(1) {
+                    match self.heap.get(i as usize) {
+                        Some(v) => res.push(*v),
+                        None => return Err(()),
+                    }
+                }
+
+                return Ok(res);
             }
         }
         Err(())
@@ -299,5 +311,64 @@ pub fn op_store(vm: &mut VM) {
     }
 
     vm.ip += 3;
+    return;
+}
+
+pub fn op_load(vm: &mut VM) {
+    // 0xA4, size: 4
+    // load rtype rdst rsrc
+    let r_type_ind: usize = vm.memory[(vm.ip + 1)] as usize;
+    let r_dst_ind: usize = vm.memory[(vm.ip + 2)] as usize;
+    let r_src_ind: usize = vm.memory[(vm.ip + 3)] as usize;
+
+    let type_ind: u64 = vm.registers[r_type_ind];
+    let addr: u64 = vm.registers[r_src_ind];
+    let res_bytes: Vec<u8> = match vm.heap.read(addr, 8) {
+        Ok(vec) => vec,
+        Err(_) => {
+            vm.exceptions_active
+                .push(crate::exceptions::Exception::HeapReadFault);
+            vm.ip += 4;
+            return;
+        }
+    };
+
+    match type_ind {
+        val if (val == 1 || val == 4 || val == 8 || val == 9) => {
+            // uint
+            let res: u64 = args_to_u64(&res_bytes);
+            vm.registers[r_dst_ind] = res;
+            vm.reg_types[r_dst_ind] = match val {
+                0x1 => RegTypes::uint64,
+                0x4 => RegTypes::StrAddr,
+                0x8 => RegTypes::address,
+                0x9 => RegTypes::ds_addr,
+                _ => panic!(
+                    "Type {} is incorrect for `load 1 r{} r{}`, at IP = {}",
+                    val, r_dst_ind, r_src_ind, vm.ip
+                ),
+            };
+        }
+        0x2 => {
+            // int
+            let res: i64 = args_to_i64(&res_bytes);
+            vm.registers[r_dst_ind] = res as u64;
+            vm.reg_types[r_dst_ind] = RegTypes::int64;
+        }
+        0x3 => {
+            // float
+            let res: f64 = args_to_f64(&res_bytes);
+            vm.registers[r_dst_ind] = res.to_bits();
+            vm.reg_types[r_dst_ind] = RegTypes::float64;
+        }
+        other => {
+            panic!(
+                "Type {} is incorrect for `load` instruction, at IP = {}",
+                other, vm.ip
+            );
+        }
+    }
+
+    vm.ip += 4;
     return;
 }

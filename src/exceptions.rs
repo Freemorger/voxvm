@@ -4,4 +4,5 @@ pub enum Exception {
     HeapAllocationFault,
     HeapFreeFault,
     HeapWriteFault,
+    HeapReadFault,
 }

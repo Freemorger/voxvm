@@ -201,7 +201,7 @@ impl VoxAssembly {
                                 self.bin_buffer
                                     .extend_from_slice(&(count * 8).to_be_bytes());
                                 let zero_64: u64 = 0;
-                                for i in 0..count {
+                                for _ in 0..count {
                                     self.bin_buffer.extend_from_slice(&zero_64.to_be_bytes());
                                 }
                                 continue;
@@ -224,6 +224,18 @@ impl VoxAssembly {
                         }
                     }
                     0x7 => {
+                        if let Some(s) = lexems.get(2) {
+                            if s.starts_with("!zeros=") {
+                                let count: u64 = u64_from_str_auto(&s[7..].to_string());
+                                self.bin_buffer
+                                    .extend_from_slice(&(count * 8).to_be_bytes());
+                                let zero_i64: i64 = 0;
+                                for _ in 0..count {
+                                    self.bin_buffer.extend_from_slice(&zero_i64.to_be_bytes());
+                                }
+                                continue;
+                            }
+                        }
                         let res_vec: Vec<i64> = match parse_array_string::<i64>(&line) {
                             Ok(res) => res,
                             Err(err) => {
@@ -241,6 +253,18 @@ impl VoxAssembly {
                         }
                     }
                     0x8 => {
+                        if let Some(s) = lexems.get(2) {
+                            if s.starts_with("!zeros=") {
+                                let count: u64 = u64_from_str_auto(&s[7..].to_string());
+                                self.bin_buffer
+                                    .extend_from_slice(&(count * 8).to_be_bytes());
+                                let zero_f64: f64 = 0f64;
+                                for i in 0..count {
+                                    self.bin_buffer.extend_from_slice(&zero_f64.to_be_bytes());
+                                }
+                                continue;
+                            }
+                        }
                         let res_vec: Vec<f64> = match parse_array_string::<f64>(&line) {
                             Ok(res) => res,
                             Err(err) => {
@@ -666,6 +690,7 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "free".to_string() => vec![LexTypes::Op(0xA1), LexTypes::Size(2), LexTypes::Reg((0))],
         "store".to_string() => vec![LexTypes::Op(0xA2), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "allocr".to_string() => vec![LexTypes::Op(0xA3), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "load".to_string() => vec![LexTypes::Op(0xA4), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)]
     }
 }
 
@@ -674,7 +699,8 @@ fn get_exc_table() -> HashMap<String, u64> {
         "zero_division".to_string() => 0x1,
         "heap_allocation_fault".to_string() => 0x2,
         "heap_free_fault".to_string() => 0x3,
-        "heap_write_fault".to_string() => 0x4
+        "heap_write_fault".to_string() => 0x4,
+        "heap_read_fault".to_string() => 0x5
     }
 }
 

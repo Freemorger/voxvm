@@ -1,27 +1,15 @@
 section text
 .start
-    uload r1 0 ; ctr
-    uload r2 1000 ; max
-    uload r3 1 ; inc
-    uload r5 15 ; to load
-    uload r8 8 ; factor
+    uload r3 2 ; int
+    iload r2 -4
 
-    label loop
-        ucmp r1 r2
-        jz @loop1_exit
-
-        alloc r4 64
-        jexc @heap_allocation_fault @fail_alloc
-        store r4 r5
-        jexc @heap_write_fault @fail_write
-        #free r4
-        #jexc @heap_free_fault @fail_free
-
-        uadd r1 r3
-        jmp @loop
-
-    label loop1_exit
-
+    alloc r1 8
+    jexc @heap_allocation_fault @fail_alloc
+    store r1 r2
+    jexc @heap_write_fault @fail_write
+    load r3 r4 r1
+    jexc @heap_read_fault @fail_read
+    ncall 1 r4
 
     label exit
         halt
@@ -41,7 +29,13 @@ section text
         ncall 1 r3
         halt
 
+    label fail_read
+        dsload r3 fail_read_msg 0
+        ncall 1 r3
+        halt
+
 section data
     fail_msg str "heap allocation fault"
     fail_free_msg str "heap free fault"
     fail_write_msg str "heap write err"
+    fail_read_msg str "heap read fault"

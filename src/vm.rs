@@ -4,7 +4,7 @@ use crate::{
     exceptions::Exception,
     fileformats::VoxExeHeader,
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
-    heap::{Heap, op_alloc, op_allocr, op_free, op_store},
+    heap::{Heap, op_alloc, op_allocr, op_free, op_load, op_store},
     stack::{op_pop, op_popall, op_push, op_pushall},
 };
 use core::panic;
@@ -22,8 +22,8 @@ pub enum RegTypes {
     int64 = 2,
     float64 = 3,
     StrAddr = 4,
-    address = 5,
-    ds_addr = 6,
+    address = 8,
+    ds_addr = 9,
 }
 
 #[derive(Debug)]
@@ -208,6 +208,7 @@ impl VM {
         handlers[0xA1] = op_free as InstructionHandler;
         handlers[0xA2] = op_store as InstructionHandler;
         handlers[0xA3] = op_allocr as InstructionHandler;
+        handlers[0xA4] = op_load as InstructionHandler;
         // ...
         handlers
     };
@@ -880,6 +881,7 @@ impl VM {
             0x2 => Exception::HeapAllocationFault,
             0x3 => Exception::HeapFreeFault,
             0x4 => Exception::HeapWriteFault,
+            0x5 => Exception::HeapReadFault,
             other => {
                 panic!("Unknown exception: {} at IP {}", other, self.ip);
             }
@@ -1258,7 +1260,7 @@ impl VM {
         let abs_addr: usize = (self.data_base as usize) + rel_addr + offset + 1 + 8; // +1 for var
         // type, +1 for var size
         match self.reg_types[r_src_ind] {
-            RegTypes::uint64 => {
+            RegTypes::uint64 | RegTypes::StrAddr | RegTypes::address | RegTypes::ds_addr => {
                 let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
@@ -1276,7 +1278,6 @@ impl VM {
                     self.memory[abs_addr + i] = val[i];
                 }
             }
-            _ => {}
         }
 
         self.ip += 18;
@@ -1293,13 +1294,24 @@ impl VM {
         let abs_addr: usize = (self.data_base as usize) + rel_addr + (offset as usize) + 1 + 8; // +1 for var
         // type, +1 for var size
         match self.reg_types[r_src_ind] {
-            RegTypes::uint64 => {
+            RegTypes::uint64 | RegTypes::StrAddr | RegTypes::address | RegTypes::ds_addr => {
                 let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
             }
-            _ => {}
+            RegTypes::int64 => {
+                let val: [u8; 8] = (self.registers[r_src_ind] as i64).to_be_bytes();
+                for i in 0..8 {
+                    self.memory[abs_addr + i] = val[i];
+                }
+            }
+            RegTypes::float64 => {
+                let val: [u8; 8] = (self.registers[r_src_ind] as f64).to_be_bytes();
+                for i in 0..8 {
+                    self.memory[abs_addr + i] = val[i];
+                }
+            }
         }
 
         self.ip += 11;
