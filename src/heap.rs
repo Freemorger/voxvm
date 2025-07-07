@@ -1,6 +1,6 @@
 use rand::Rng;
 
-// Allocator works at custom strategy "Split/merge first-fit":
+// Allocator works on custom strategy "Split/merge first-fit":
 // On allocation: find the first free block with at least n bytes of size,
 // take only n bytes.
 // On free: free the block, merge freed block with other free blocks nearby
@@ -64,11 +64,8 @@ impl Heap {
         self.allocated.remove(to_free.unwrap());
 
         //Merging free blocks for less fragmentation
-        let mut merges_count = 0;
-        if merges_count == 0 {
-            let new_free_block: HeapBlock = HeapBlock::new(ptr as usize, freed_end.unwrap());
-            self.free_list.push(new_free_block);
-        }
+        let new_free_block: HeapBlock = HeapBlock::new(ptr as usize, freed_end.unwrap());
+        self.free_list.push(new_free_block);
         self.free_list
             .sort_by(|a, b| a.start_byte.cmp(&b.start_byte));
         self.merge_free_blocks();

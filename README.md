@@ -4,7 +4,7 @@
 - Powerful heap allocator with custom "Split/merge first-fit" strategy
 - Bytecode assembly
 - .vve (voxvm executable) file format
-- It's (comparably) fast :D   [10x faster then python in my tests, at least]
+- It's (comparably) fast :D   [10x faster than python in my tests, at least]
 - full docs will be available ~once~ soon
 
 ## Usage:
@@ -17,7 +17,7 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
       \--vas=filename  runs voxvm assembly with filename as input file
       \--vas-out=filename  specifies voxvm assembly output filename
       \--coredump_exit  coredumps after halt, saves it into `voxvm.dump` file
-      \----max-recursion sets maximal recursion limit
+      \--max-recursion sets maximal recursion limit
 ```
 
 ## Last implementations + todos:

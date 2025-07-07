@@ -5,4 +5,5 @@ pub enum Exception {
     HeapFreeFault,
     HeapWriteFault,
     HeapReadFault,
+    NegativeSqrt,
 }

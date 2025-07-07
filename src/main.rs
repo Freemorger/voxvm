@@ -1,6 +1,7 @@
 use std::{env, fs::File, io::Write, process::exit};
 
 use assembly::VoxAssembly;
+use regex::Regex;
 use vm::VM;
 
 mod assembly;
@@ -33,28 +34,34 @@ fn main() {
 
     for arg in env::args() {
         if let Some(val) = arg.strip_prefix("--init-ram=") {
-            match val.parse::<usize>() {
-                Ok(num) => ram_size = Some(num),
-                Err(_) => {
-                    eprintln!("ERROR: Init ram value has to be integer.");
+            match pretty_input_tobytes(val.to_string()) {
+                Some(num) => ram_size = Some(num),
+                None => {
+                    eprintln!(
+                        "ERROR: Init ram value is incorrect.\nHint: specify unit, e.g. `--init-ram=100MB`"
+                    );
                     return;
                 }
             }
         }
         if let Some(val) = arg.strip_prefix("--init-stack-size=") {
-            match val.parse::<usize>() {
-                Ok(num) => stack_size = Some(num),
-                Err(_) => {
-                    eprintln!("ERROR: Init stack size has to be integer.");
+            match pretty_input_tobytes(val.to_string()) {
+                Some(num) => stack_size = Some(num),
+                None => {
+                    eprintln!(
+                        "ERROR: Init stack size is incorrect.\nHint: specify unit, e.g. `--init-stack-size=100MB`"
+                    );
                     return;
                 }
             }
         }
         if let Some(val) = arg.strip_prefix("--init-heap-size=") {
-            match val.parse::<usize>() {
-                Ok(num) => heap_size = Some(num),
-                Err(_) => {
-                    eprintln!("ERROR: Init heap size has to be integer.");
+            match pretty_input_tobytes(val.to_string()) {
+                Some(num) => heap_size = Some(num),
+                None => {
+                    eprintln!(
+                        "ERROR: Init heap size is incorrect.\nHint: specify unit, e.g. `--init-heap-size=100MB`"
+                    );
                     return;
                 }
             }
@@ -116,31 +123,40 @@ fn main() {
     }
 
     match ram_size {
-        Some(size) => println!("Initializing VM with init RAM size = {}", size),
+        Some(size) => println!(
+            "Initializing VM with init RAM size = {}",
+            pretty_fmt_size(size as u64)
+        ),
         None => {
             println!(
-                "Init RAM size is not specified, using {} bytes by default.",
-                DEFAULT_INIT_RAM
+                "Init RAM size is not specified, using {} by default.",
+                pretty_fmt_size(DEFAULT_INIT_RAM as u64)
             );
             ram_size = Some(DEFAULT_INIT_RAM);
         }
     }
     match stack_size {
-        Some(size) => println!("Initializing VM with init stack size = {}", size),
+        Some(size) => println!(
+            "Initializing VM with init stack size = {}",
+            pretty_fmt_size(size as u64)
+        ),
         None => {
             println!(
-                "Init stack size is not specified, using {} bytes by default.",
-                DEFAULT_INIT_STACK
+                "Init stack size is not specified, using {} by default.",
+                pretty_fmt_size(DEFAULT_INIT_STACK as u64)
             );
             stack_size = Some(DEFAULT_INIT_STACK);
         }
     }
     match heap_size {
-        Some(size) => println!("Initializing VM with init heap size = {}", size),
+        Some(size) => println!(
+            "Initializing VM with init heap size = {}",
+            pretty_fmt_size(size as u64)
+        ),
         None => {
             println!(
-                "Init heap size is not specified, using {} bytes by default.",
-                DEFAULT_INIT_HEAP
+                "Init heap size is not specified, using {} by default.",
+                pretty_fmt_size(DEFAULT_INIT_HEAP as u64)
             );
             heap_size = Some(DEFAULT_INIT_HEAP);
         }
@@ -166,6 +182,7 @@ fn main() {
     if (vvr_filename.is_none()) && (vve_filename.is_none()) {
         println!("Usage: voxvm --vvr=name - loads a vvr (voxvm raw) file;");
         println!("\t --vve=name - loads a vve (voxvm executable) file.");
+        println!("\t More info/args in README.md");
         exit(0);
     }
 
@@ -181,4 +198,41 @@ fn main() {
         };
         out_file.write_all(&dump);
     }
+}
+
+pub fn pretty_input_tobytes(s: String) -> Option<usize> {
+    let re = Regex::new(r"(?i)(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)").unwrap();
+
+    for cap in re.captures_iter(&s) {
+        let size = &cap[1];
+        let unit = &cap[2];
+
+        let multiplier: u64 = match unit.to_lowercase().as_str() {
+            "gb" => 1024 * 1024 * 1024, // why not pow? because.
+            "mb" => 1024 * 1024,
+            "kb" => 1024,
+            "b" => 1,
+            _ => 0, // we wont reach it
+        };
+        let size_u64: f64 = size.parse::<f64>().unwrap();
+        let res: usize = (size_u64 * (multiplier as f64)).round() as usize;
+        return Some(res);
+    }
+    None
+}
+
+pub fn pretty_fmt_size(size: u64) -> String {
+    if size >= (1024 * 1024 * 1024) {
+        let gbytes: f64 = size as f64 / (1024 * 1024 * 1024) as f64;
+        return format!("{:.1}GB", gbytes);
+    }
+    if size >= (1024 * 1024) {
+        let mbytes: f64 = size as f64 / (1024 * 1024) as f64;
+        return format!("{:.1}MB", mbytes);
+    }
+    if size >= (1024) {
+        let kbytes: f64 = size as f64 / 1024 as f64;
+        return format!("{:.1}KB", kbytes);
+    }
+    return format!("{}B", size);
 }

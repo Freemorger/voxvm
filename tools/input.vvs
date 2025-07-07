@@ -10,8 +10,19 @@ section text
     load r3 r4 r1
     jexc @heap_read_fault @fail_read
     ncall 1 r4
+    itof r5 r4
+    finc r5
+    ncall 1 r5
+    fsqrt r5 r5
+    jexc @negative_sqrt @negsqrt
+    halt
 
     label exit
+        halt
+
+    label negsqrt
+        dsload r3 fail_sqrt_msg 0
+        ncall 1 r3
         halt
 
     label fail_alloc
@@ -39,3 +50,4 @@ section data
     fail_free_msg str "heap free fault"
     fail_write_msg str "heap write err"
     fail_read_msg str "heap read fault"
+    fail_sqrt_msg str "negative_sqrt"

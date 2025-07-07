@@ -5,7 +5,6 @@ pub fn op_call(vm: &mut VM) {
     // call ind (index of function in func table)
     if (vm.call_stack.len() + 1 > vm.rec_depth_max) {
         panic!("Recursion depth exceed at IP = {}!", vm.ip);
-    } else {
     }
 
     let ind: u64 = args_to_u64(&vm.memory[(vm.ip + 1)..(vm.ip + 9)]);

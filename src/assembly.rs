@@ -2,6 +2,7 @@ use core::panic;
 use maplit::hashmap;
 use regex::Regex;
 use std::{
+    any::type_name,
     clone,
     collections::HashMap,
     fs::{File, OpenOptions},
@@ -131,17 +132,29 @@ impl VoxAssembly {
             }
 
             if self.cursect == CurrentSection::Data {
-                let var_type_ind: u8 = match detect_ds_var_type(lexems[1]) {
+                let mut type_lexem_n: usize = 1;
+                let mut is_const: bool = false;
+                const const_mask: u8 = 0x10;
+
+                if let Some(&"const") = lexems.get(1) {
+                    type_lexem_n = 2;
+                    is_const = true;
+                }
+                let var_type_ind: u8 = match detect_ds_var_type(lexems[type_lexem_n]) {
                     Some(val) => val,
                     None => panic!(
                         "ERROR: Unknown data segment variable type {} at line {}",
-                        lexems[1], line_num
+                        lexems[type_lexem_n], line_num
                     ),
                 };
-                self.bin_buffer.push(var_type_ind);
+                let type_flags: u8 = match is_const {
+                    true => var_type_ind | const_mask,
+                    false => var_type_ind,
+                };
+                self.bin_buffer.push(type_flags);
                 match var_type_ind {
                     0x1 => {
-                        let arg: &str = lexems[2];
+                        let arg: &str = lexems[(type_lexem_n + 1) as usize];
                         let res: u64;
                         let mut num_sys: u32 = 10;
                         let var_size: u64 = 8;
@@ -153,7 +166,7 @@ impl VoxAssembly {
                         self.bin_buffer.extend_from_slice(&res.to_be_bytes());
                     }
                     0x2 => {
-                        let arg: &str = lexems[2];
+                        let arg: &str = lexems[(type_lexem_n + 1) as usize];
                         let res: i64;
                         let mut num_sys: u32 = 10;
                         let var_size: u64 = 8;
@@ -165,7 +178,7 @@ impl VoxAssembly {
                         self.bin_buffer.extend_from_slice(&res.to_be_bytes());
                     }
                     0x3 => {
-                        let arg: &str = lexems[2];
+                        let arg: &str = lexems[(type_lexem_n + 1) as usize];
                         let res: f64 = arg.parse().unwrap();
                         let var_size: u64 = 8;
                         self.bin_buffer.extend_from_slice(&var_size.to_be_bytes());
@@ -195,7 +208,7 @@ impl VoxAssembly {
                         self.bin_buffer.extend_from_slice(&tmp_utf16_buf);
                     }
                     0x6 => {
-                        if let Some(s) = lexems.get(2) {
+                        if let Some(s) = lexems.get((var_type_ind + 1) as usize) {
                             if s.starts_with("!zeros=") {
                                 let count: u64 = u64_from_str_auto(&s[7..].to_string());
                                 self.bin_buffer
@@ -514,9 +527,14 @@ impl VoxAssembly {
             } else if lexems[0] == "section" && lexems[1] == "text" {
                 self.cursect = CurrentSection::Code;
             } else if self.cursect == CurrentSection::Data {
-                let var_type: u8 = match detect_ds_var_type(lexems[1]) {
+                let mut type_lexems_n: usize = 1;
+                if let Some(&"const") = lexems.get(1) {
+                    type_lexems_n = 2;
+                };
+
+                let var_type: u8 = match detect_ds_var_type(lexems[type_lexems_n]) {
                     Some(val) => val,
-                    None => panic!("{}: Unknown var type: {}", line_num, lexems[1]),
+                    None => panic!("{}: Unknown var type: {}", line_num, lexems[type_lexems_n]),
                 };
                 self.save_data_label(lexems[0].to_string());
                 let var_size: u64 = match var_type {
@@ -531,8 +549,7 @@ impl VoxAssembly {
                     }
                     0x5 => {
                         // ptr
-                        let size_contained: u64 = lexems[1].parse().unwrap();
-                        8 + size_contained
+                        8 + 8
                     }
                     0x6 | 0x7 | 0x8 => {
                         // uint, int, float arrays
@@ -627,6 +644,8 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "ucmp".to_string() => vec![LexTypes::Op(0x16), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "usqrt".to_string() => vec![LexTypes::Op(0x17), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "upow".to_string() => vec![LexTypes::Op(0x18), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "uinc".to_string() => vec![LexTypes::Op(0x19), LexTypes::Size(2), LexTypes::Reg(0)],
+        "udec".to_string() => vec![LexTypes::Op(0x1a), LexTypes::Size(2), LexTypes::Reg(0)],
         "iload".to_string() => vec![LexTypes::Op(0x20), LexTypes::Size(10), LexTypes::Reg(0), LexTypes::Value(0)],
         "iadd".to_string() => vec![LexTypes::Op(0x21), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "imul".to_string() => vec![LexTypes::Op(0x22), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
@@ -638,6 +657,8 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "ineg".to_string() => vec![LexTypes::Op(0x28), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "isqrt".to_string() => vec![LexTypes::Op(0x29), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "ipow".to_string() => vec![LexTypes::Op(0x2a), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "iinc".to_string() => vec![LexTypes::Op(0x2b), LexTypes::Size(2), LexTypes::Reg(0)],
+        "idec".to_string() => vec![LexTypes::Op(0x2c), LexTypes::Size(2), LexTypes::Reg(0)],
         "fload".to_string() => vec![LexTypes::Op(0x30), LexTypes::Size(10), LexTypes::Reg(0), LexTypes::Value(0)],
         "fadd".to_string() => vec![LexTypes::Op(0x31), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "fmul".to_string() => vec![LexTypes::Op(0x32), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
@@ -650,6 +671,9 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "fneg".to_string() => vec![LexTypes::Op(0x39), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "fsqrt".to_string() => vec![LexTypes::Op(0x3a), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "fpow".to_string() => vec![LexTypes::Op(0x3b), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "finc".to_string() => vec![LexTypes::Op(0x3c), LexTypes::Size(2), LexTypes::Reg(0)],
+        "fdec".to_string() => vec![LexTypes::Op(0x3d), LexTypes::Size(2), LexTypes::Reg(0)],
+        "uinc".to_string() => vec![LexTypes::Op(0x19), LexTypes::Size(2), LexTypes::Reg(0)],
         "jmp".to_string() => vec![LexTypes::Op(0x40), LexTypes::Size(9), LexTypes::Addr(0)],
         "jz".to_string() => vec![LexTypes::Op(0x41), LexTypes::Size(9), LexTypes::Addr(0)],
         "jl".to_string() => vec![LexTypes::Op(0x42), LexTypes::Size(9), LexTypes::Addr(0)],
@@ -700,7 +724,8 @@ fn get_exc_table() -> HashMap<String, u64> {
         "heap_allocation_fault".to_string() => 0x2,
         "heap_free_fault".to_string() => 0x3,
         "heap_write_fault".to_string() => 0x4,
-        "heap_read_fault".to_string() => 0x5
+        "heap_read_fault".to_string() => 0x5,
+        "negative_sqrt".to_string() => 0x6,
     }
 }
 

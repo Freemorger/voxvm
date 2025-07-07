@@ -145,6 +145,8 @@ impl VM {
         handlers[0x16] = Self::op_ucmp as InstructionHandler;
         handlers[0x17] = Self::op_usqrt as InstructionHandler;
         handlers[0x18] = Self::op_upow as InstructionHandler;
+        handlers[0x19] = Self::op_uinc as InstructionHandler;
+        handlers[0x1a] = Self::op_udec as InstructionHandler;
         handlers[0x20] = Self::op_iload as InstructionHandler;
         handlers[0x21] = Self::op_iadd as InstructionHandler;
         handlers[0x22] = Self::op_imul as InstructionHandler;
@@ -156,6 +158,8 @@ impl VM {
         handlers[0x28] = Self::op_ineg as InstructionHandler;
         handlers[0x29] = Self::op_isqrt as InstructionHandler;
         handlers[0x2a] = Self::op_ipow as InstructionHandler;
+        handlers[0x2b] = Self::op_iinc as InstructionHandler;
+        handlers[0x2c] = Self::op_idec as InstructionHandler;
         handlers[0x30] = Self::op_fload as InstructionHandler;
         handlers[0x31] = Self::op_fadd as InstructionHandler;
         handlers[0x32] = Self::op_fmul as InstructionHandler;
@@ -168,6 +172,8 @@ impl VM {
         handlers[0x39] = Self::op_fneg as InstructionHandler;
         handlers[0x3a] = Self::op_fsqrt as InstructionHandler;
         handlers[0x3b] = Self::op_fpow as InstructionHandler;
+        handlers[0x3c] = Self::op_finc as InstructionHandler;
+        handlers[0x3d] = Self::op_fdec as InstructionHandler;
         handlers[0x40] = Self::op_jmp as InstructionHandler;
         handlers[0x41] = Self::op_jz as InstructionHandler;
         handlers[0x42] = Self::op_jl as InstructionHandler;
@@ -377,6 +383,36 @@ impl VM {
         return;
     }
 
+    fn op_uinc(&mut self) {
+        // 0x19, size: 2
+        // uinc Rdest
+        let r_dest_int: usize = self.memory[(self.ip + 1)] as usize;
+        self.registers[r_dest_int] += 1;
+        if self.registers[r_dest_int] == 0 {
+            self.flags[0] = 1; // of
+        } else {
+            self.flags[0] = 0;
+        }
+
+        self.ip += 2;
+        return;
+    }
+
+    fn op_udec(&mut self) {
+        // 0x1a, size: 2
+        // uinc Rdest
+        let r_dest_int: usize = self.memory[(self.ip + 1)] as usize;
+        self.registers[r_dest_int] -= 1;
+        if self.registers[r_dest_int] == 0 {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+
+        self.ip += 2;
+        return;
+    }
+
     fn op_iload(&mut self) {
         //0x20, size: 10
         let register_ind: u8 = self.memory[(self.ip + 1) as usize];
@@ -542,6 +578,11 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
+        if (self.registers[reg_src_ind] as i64) < 0 {
+            self.exceptions_active.push(Exception::NegativeSqrt);
+            self.ip += 3;
+            return;
+        }
         let res: u64 = (self.registers[reg_src_ind] as i64).isqrt() as u64;
         self.registers[reg_dest_ind] = res;
         self.reg_types[reg_dest_ind] = RegTypes::int64;
@@ -577,6 +618,50 @@ impl VM {
             self.flags[2] = 0;
         }
         self.ip += 3;
+        return;
+    }
+
+    fn op_iinc(&mut self) {
+        // 0x2b, size: 2
+        // iinc rdst
+        let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
+
+        let new_val: i64 = (self.registers[r_dst_ind] as i64) + 1;
+        self.registers[r_dst_ind] = new_val as u64;
+        if (new_val == 0) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+        if (new_val < 0) {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+
+        self.ip += 2;
+        return;
+    }
+
+    fn op_idec(&mut self) {
+        // 0x2c, size: 2
+        // idec rdst
+        let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
+
+        let new_val: i64 = (self.registers[r_dst_ind] as i64) - 1;
+        self.registers[r_dst_ind] = new_val as u64;
+        if (new_val == 0) {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+        if (new_val < 0) {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+
+        self.ip += 2;
         return;
     }
 
@@ -638,6 +723,11 @@ impl VM {
         let reg_1_ind: u8 = self.memory[(self.ip + 2) as usize];
         let reg_2_ind: u8 = self.memory[(self.ip + 3) as usize];
 
+        if f64::from_bits(self.registers[reg_2_ind as usize]) == 0f64 {
+            self.exceptions_active.push(Exception::ZeroDivision);
+            self.ip += 4;
+            return;
+        }
         let result: f64 = f64::from_bits(self.registers[reg_1_ind as usize])
             / f64::from_bits(self.registers[reg_2_ind as usize]);
         self.registers[dest_r_ind as usize] = result.to_bits();
@@ -765,6 +855,11 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
+        if f64::from_bits(self.registers[reg_src_ind]) < 0.0f64 {
+            self.exceptions_active.push(Exception::NegativeSqrt);
+            self.ip += 3;
+            return;
+        }
         let res: f64 = f64::from_bits(self.registers[reg_src_ind]).sqrt();
         self.registers[reg_dest_ind] = res.to_bits();
         self.reg_types[reg_dest_ind] = RegTypes::float64;
@@ -797,6 +892,50 @@ impl VM {
         }
 
         self.ip += 3;
+        return;
+    }
+
+    fn op_finc(&mut self) {
+        // 0x3c, size: 2
+        // finc rdst
+        let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
+        let res: f64 = f64::from_bits(self.registers[r_dst_ind]) + 1f64;
+
+        self.registers[r_dst_ind] = res.to_bits();
+        if res == 0f64 {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+        if res < 0f64 {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+
+        self.ip += 2;
+        return;
+    }
+
+    fn op_fdec(&mut self) {
+        // 0x3d, size: 2
+        // fdec rdst
+        let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
+        let res: f64 = f64::from_bits(self.registers[r_dst_ind]) - 1f64;
+
+        self.registers[r_dst_ind] = res.to_bits();
+        if res == 0f64 {
+            self.flags[1] = 1; // zf
+        } else {
+            self.flags[1] = 0;
+        }
+        if res < 0f64 {
+            self.flags[2] = 1; // nf
+        } else {
+            self.flags[2] = 0;
+        }
+
+        self.ip += 2;
         return;
     }
 
@@ -882,6 +1021,7 @@ impl VM {
             0x3 => Exception::HeapFreeFault,
             0x4 => Exception::HeapWriteFault,
             0x5 => Exception::HeapReadFault,
+            0x6 => Exception::NegativeSqrt,
             other => {
                 panic!("Unknown exception: {} at IP {}", other, self.ip);
             }
@@ -1122,6 +1262,7 @@ impl VM {
     fn op_dsload(&mut self) {
         // 0x70, size: 18
         // dsload Rdest reladdr offset
+        const const_flag: u8 = 0x10;
         let rel_addr: usize =
             args_to_u64(&self.memory[(self.ip + 2 as usize)..(self.ip + 10 as usize)]) as usize; // relative address of target variable in VM memory
         let offset: usize =
@@ -1130,6 +1271,7 @@ impl VM {
                 + 1; // 8 for length skip, 1 for type
         let abs_addr: usize = (self.data_base as usize) + rel_addr + offset; // absolute addr.
         let mut var_type_ind: u8 = self.memory[abs_addr - offset];
+        var_type_ind = var_type_ind & !const_flag; // getting clear type
         if var_type_ind >= 0x6 && var_type_ind <= 0x8 {
             var_type_ind -= 5; // dsload only loading value. use dslea for loading addr
         }
@@ -1187,7 +1329,7 @@ impl VM {
     fn op_dsrload(&mut self) {
         // 0x71, size: 11
         // dsload Rdest Roffset reladdr
-
+        const const_flag: u8 = 0x10;
         let offset: usize =
             self.registers[self.memory[(self.ip + 2) as usize] as usize] as usize + 8 + 1; // 8 for
         // length skip
@@ -1195,6 +1337,7 @@ impl VM {
             args_to_u64(&self.memory[(self.ip + 3 as usize)..(self.ip + 11 as usize)]) as usize; // relative address of target variable in VM memory
         let abs_addr: usize = (self.data_base as usize) + rel_addr + offset;
         let mut var_type_ind: u8 = self.memory[abs_addr - offset];
+        var_type_ind = var_type_ind & !const_flag;
         if var_type_ind >= 0x6 && var_type_ind <= 0x8 {
             var_type_ind -= 5; // dsload only loading value. use dslea for loading addr
         }
@@ -1253,11 +1396,18 @@ impl VM {
         // 0x72, size: 18
         // dssave Rsrc rel_addr offset
         // Updates the value in data segment
+        const CONST_MASK: u8 = 0x10;
         let r_src_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let rel_addr: usize = args_to_u64(&self.memory[(self.ip + 2)..(self.ip + 10)]) as usize;
         let offset: usize = args_to_u64(&self.memory[(self.ip + 10)..(self.ip + 18)]) as usize;
 
         let abs_addr: usize = (self.data_base as usize) + rel_addr + offset + 1 + 8; // +1 for var
+        if (self.memory[self.data_base as usize + rel_addr] & CONST_MASK) != 0 {
+            panic!(
+                "CRITICAL: Attempting to write new value into DS constant at IP {}",
+                self.ip
+            );
+        }
         // type, +1 for var size
         match self.reg_types[r_src_ind] {
             RegTypes::uint64 | RegTypes::StrAddr | RegTypes::address | RegTypes::ds_addr => {
@@ -1286,6 +1436,7 @@ impl VM {
     fn op_dsrsave(&mut self) {
         // 0x73, size: 11
         // dsrsave Rsrc Roffset rel_addr
+        const CONST_MASK: u8 = 0x10;
         let r_src_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_offset_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
         let offset = self.registers[r_offset_ind];
@@ -1293,6 +1444,12 @@ impl VM {
 
         let abs_addr: usize = (self.data_base as usize) + rel_addr + (offset as usize) + 1 + 8; // +1 for var
         // type, +1 for var size
+        if (self.memory[self.data_base as usize + rel_addr] & CONST_MASK) != 0 {
+            panic!(
+                "CRITICAL: Attempting to write new value into DS constant at IP {}",
+                self.ip
+            );
+        }
         match self.reg_types[r_src_ind] {
             RegTypes::uint64 | RegTypes::StrAddr | RegTypes::address | RegTypes::ds_addr => {
                 let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
