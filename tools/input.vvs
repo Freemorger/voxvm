@@ -1,24 +1,24 @@
 section text
 .start
-    uload r3 2 ; int
-    iload r2 -4
+    #call @stress_gc
 
-    alloc r1 8
+    alloc r10 8
+
+    alloc r12 64
     jexc @heap_allocation_fault @fail_alloc
-    store r1 r2
-    jexc @heap_write_fault @fail_write
-    load r3 r4 r1
-    jexc @heap_read_fault @fail_read
-    ncall 1 r4
-    itof r5 r4
-    finc r5
-    ncall 1 r5
-    fsqrt r5 r5
-    jexc @negative_sqrt @negsqrt
+
+    alloc r13 64
+    jexc @heap_allocation_fault @fail_alloc
+
+    store r12 r13
+    xor r13 r13
+    xor r12 r12
+
+
     halt
 
     label exit
-        halt
+        ret
 
     label negsqrt
         dsload r3 fail_sqrt_msg 0
@@ -44,6 +44,35 @@ section text
         dsload r3 fail_read_msg 0
         ncall 1 r3
         halt
+
+func stress_gc
+    uload r10 0 ; ctr
+    uload r11 100 ; stop
+    label loop_stress
+        ucmp r10 r11
+        jz @exit
+
+        alloc r12 64
+        jexc @heap_allocation_fault @fail_alloc
+
+        uinc r10
+        jmp @loop_stress
+
+func stress_nogc
+    uload r10 0 ; ctr
+    uload r11 100 ; stop
+    uload r13 64 ; size
+    label loop_stress_nogc
+        ucmp r10 r11
+        jz @exit
+
+        allocr_nogc r12 r13
+        jexc @heap_allocation_fault @fail_alloc
+
+        free r12
+
+        uinc r10
+        jmp @loop_stress_nogc
 
 section data
     fail_msg str "heap allocation fault"

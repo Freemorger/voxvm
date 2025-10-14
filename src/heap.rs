@@ -1,16 +1,22 @@
+use std::collections::{HashMap, HashSet};
+
 use rand::Rng;
 
 // Allocator works on custom strategy "Split/merge first-fit":
 // On allocation: find the first free block with at least n bytes of size,
 // take only n bytes.
 // On free: free the block, merge freed block with other free blocks nearby
-use crate::vm::{RegTypes, VM, args_to_f64, args_to_i64, args_to_u64};
+use crate::{
+    gc::GcObject,
+    vm::{RegTypes, VM, args_to_f64, args_to_i64, args_to_u64},
+};
 
 #[derive(Debug)]
 pub struct Heap {
     pub heap: Vec<u8>,
     pub free_list: Vec<HeapBlock>,
     pub allocated: Vec<HeapBlock>,
+    pub saved_refs: HashMap<u64, HashSet<u64>>, // source -> tgt
 }
 
 impl Heap {
@@ -22,6 +28,7 @@ impl Heap {
             heap: heap,
             free_list: freelist,
             allocated: alloced_list,
+            saved_refs: HashMap::new(),
         }
     }
     pub fn alloc(&mut self, count_bytes: usize) -> Option<u64> {
@@ -166,10 +173,15 @@ impl Heap {
 
     // for tests
     pub fn stress_heap(&mut self) {
-        for _ in 0..1000 {
+        for _ in 0..10000 {
             let size_alloc = self.random_8_to_256() as u64;
             if rand::random::<f32>() < 0.5 {
-                self.alloc(size_alloc as usize);
+                match self.alloc(size_alloc as usize) {
+                    Some(res) => {}
+                    None => {
+                        println!("Bad alloc");
+                    }
+                }
             }
         }
     }
@@ -195,9 +207,9 @@ impl Heap {
 
 #[derive(Debug)]
 pub struct HeapBlock {
-    start_byte: usize,
-    last_byte: usize,
-    size: usize, // last - start
+    pub start_byte: usize,
+    pub last_byte: usize,
+    pub size: usize, // last - start
 }
 
 impl HeapBlock {
@@ -226,6 +238,7 @@ pub fn op_alloc(vm: &mut VM) {
     // alloc Rdest Size_bytes
     // Attempts to allocate size bytes of memory in heap;
     // Saves ptr to allocated block if allocation was successfull
+    // The object goes to GC control
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
     let size_bytes: u64 = args_to_u64(&vm.memory[(vm.ip + 2)..(vm.ip + 10)]);
 
@@ -237,6 +250,7 @@ pub fn op_alloc(vm: &mut VM) {
             0
         }
     };
+    vm.gc.pin_object(GcObject::new(res));
 
     vm.registers[r_dest_ind] = res;
     vm.reg_types[r_dest_ind] = RegTypes::address;
@@ -250,6 +264,34 @@ pub fn op_allocr(vm: &mut VM) {
     // alloc Rdest Rsize
     // Attempts to allocate Rsize bytes of memory in heap;
     // Saves ptr to allocated block if allocation was successfull
+    // The object goes to GC control
+    let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
+    let r_size_ind: usize = vm.memory[(vm.ip + 2)] as usize;
+    let size_bytes: u64 = vm.registers[r_size_ind];
+
+    let res = match vm.heap.alloc(size_bytes as usize) {
+        Some(addr) => addr,
+        None => {
+            vm.exceptions_active
+                .push(crate::exceptions::Exception::HeapAllocationFault);
+            0
+        }
+    };
+    vm.gc.pin_object(GcObject::new(res));
+
+    vm.registers[r_dest_ind] = res;
+    vm.reg_types[r_dest_ind] = RegTypes::address;
+
+    vm.ip += 3;
+    return;
+}
+
+pub fn op_allocr_nogc(vm: &mut VM) {
+    // 0xA5, size: 3
+    // alloc Rdest Rsize
+    // Attempts to allocate Rsize bytes of memory in heap;
+    // Saves ptr to allocated block if allocation was successfull
+    // The object is manually freed!
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
     let r_size_ind: usize = vm.memory[(vm.ip + 2)] as usize;
     let size_bytes: u64 = vm.registers[r_size_ind];
@@ -298,9 +340,14 @@ pub fn op_store(vm: &mut VM) {
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
 
     let val: u64 = vm.registers[r_src_ind];
+
     let ptr: u64 = vm.registers[r_dest_ind];
     match vm.heap.write(ptr, val.to_be_bytes().to_vec()) {
-        Ok(()) => {}
+        Ok(()) => {
+            if (vm.reg_types[r_src_ind] == RegTypes::address) {
+                vm.heap.saved_refs.entry(ptr).or_default().insert(val);
+            }
+        }
         Err(()) => {
             vm.exceptions_active
                 .push(crate::exceptions::Exception::HeapWriteFault);

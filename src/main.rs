@@ -2,20 +2,28 @@ use std::{env, fs::File, io::Write, process::exit};
 
 use assembly::VoxAssembly;
 use regex::Regex;
+use sysinfo::System;
 use vm::VM;
 
 mod assembly;
+mod callstack;
 mod exceptions;
 mod fileformats;
 mod func_ops;
+mod gc;
 mod heap;
 mod stack;
 mod vm;
 
 fn main() {
-    const DEFAULT_INIT_RAM: usize = 1024 * 1024 * 1; // 1 MB + stack + heap
-    const DEFAULT_INIT_STACK: usize = DEFAULT_INIT_RAM / 2;
-    const DEFAULT_INIT_HEAP: usize = DEFAULT_INIT_RAM / 2;
+    let mut sys = System::new_all();
+    sys.refresh_memory();
+    let available_ram = sys.available_memory();
+    let sysram_multiplier: f64 = 0.01f64;
+
+    let DEFAULT_INIT_RAM: usize = (available_ram as f64 * sysram_multiplier).round() as usize;
+    let DEFAULT_INIT_STACK: usize = DEFAULT_INIT_RAM / 2;
+    let DEFAULT_INIT_HEAP: usize = DEFAULT_INIT_RAM / 2;
     const DEFAULT_RECURSION_LIMIT: usize = 1000;
     let mut ram_size: Option<usize> = None;
     let mut stack_size: Option<usize> = None;

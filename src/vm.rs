@@ -1,21 +1,24 @@
 #![allow(non_snake_case)]
 
 use crate::{
+    callstack::CallStack,
     exceptions::Exception,
     fileformats::VoxExeHeader,
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
-    heap::{Heap, op_alloc, op_allocr, op_free, op_load, op_store},
-    stack::{op_pop, op_popall, op_push, op_pushall},
+    gc::GC,
+    heap::{Heap, op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store},
+    stack::{VMStack, op_pop, op_popall, op_push, op_pushall},
 };
 use core::panic;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Result,
     fs::{self, File},
     io::Write,
+    time::Instant,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u64)]
 pub enum RegTypes {
     uint64 = 1,
@@ -33,16 +36,16 @@ pub struct VM {
     flags: [u8; 4], // of, zf, nf, cf
     pub ip: usize,
     pub memory: Vec<u8>, // dividing by each bytes, then can be grouped
-    pub stack: Vec<u64>,
-    sp: u64, // stack pointer
+    pub stack: VMStack,
     pub heap: Heap,
+    pub gc: GC,
     data_base: u64, // pointer at data segment start
     data_size: u64,
     nativecalls: std::collections::HashMap<u16, NativeFn>,
     running: bool,
     float_epsilon: f64,
     pub func_table: Vec<u64>,
-    pub call_stack: Vec<u64>,
+    pub call_stack: CallStack,
     pub rec_depth_max: usize,
     pub exceptions_active: Vec<Exception>,
 }
@@ -62,8 +65,7 @@ impl VM {
             flags: [0; 4],
             ip: 0x0,
             memory: Vec::with_capacity(init_mem),
-            stack: Vec::with_capacity(init_stack),
-            sp: 0x0,
+            stack: VMStack::new(init_stack),
             heap: Heap::new(init_heap),
             data_base: 0x0,
             data_size: 0,
@@ -71,9 +73,10 @@ impl VM {
             running: true,
             float_epsilon: 1e-10,
             func_table: Vec::new(),
-            call_stack: Vec::new(),
+            call_stack: CallStack::new(),
             rec_depth_max: max_recursion_depth,
             exceptions_active: Vec::new(),
+            gc: GC::new(),
         }
     }
     pub fn load_vvr(&mut self, input_file_name: &str) {
@@ -115,10 +118,43 @@ impl VM {
     }
 
     pub fn run(&mut self) {
+        let mut since_cleanup: usize = 0;
+
         while (self.ip < self.memory.capacity()) && (self.running) {
             let opcode = self.memory[self.ip];
             //println!("DBG: cur opcode: {}", self.ip);
             Self::OPERATIONS[opcode as usize](self);
+
+            if (since_cleanup >= 1) {
+                // running gc after each 100 instructions
+                println!(
+                    "Running GC interrupt at opcode 0x{:x}. Alloced block count: {}",
+                    self.memory[self.ip],
+                    self.heap.allocated.len()
+                );
+                let start = Instant::now();
+
+                let regs_hashset: HashSet<u64> = self.gc_gen_reg_set();
+                let dstack_hashset: HashSet<u64> = self.fetch_dstack_refs();
+                let final_hset: HashSet<u64> =
+                    regs_hashset.union(&dstack_hashset).cloned().collect();
+                let t2: HashMap<u64, HashSet<u64>> = self.heap.saved_refs.clone();
+
+                self.gc.mark(&final_hset, &t2);
+                let addrs = self.gc.sweep();
+                self.gc_finish_cleanup(addrs);
+
+                let elapsed = start.elapsed();
+                println!(
+                    "Finished GC interrupt. Time elapsed: {:?}, Alloced block count: {}",
+                    elapsed,
+                    self.heap.allocated.len()
+                );
+                since_cleanup = 0;
+            } else {
+                since_cleanup += 1;
+            }
+            println!("since cleanup: {}", since_cleanup);
         }
         if self.ip >= self.memory.capacity() {
             panic!(
@@ -129,6 +165,7 @@ impl VM {
                 self.ip
             );
         }
+        println!("{:?}", self.heap.free_list);
     }
 
     const OPERATIONS: [InstructionHandler; 256] = {
@@ -187,6 +224,8 @@ impl VM {
         handlers[0x53] = Self::op_itof as InstructionHandler;
         handlers[0x54] = Self::op_ftou as InstructionHandler;
         handlers[0x55] = Self::op_ftoi as InstructionHandler;
+        handlers[0x56] = Self::op_ptou as InstructionHandler;
+        handlers[0x57] = Self::op_utop as InstructionHandler;
         handlers[0x60] = Self::op_movr as InstructionHandler;
         handlers[0x61] = Self::op_or as InstructionHandler;
         handlers[0x62] = Self::op_and as InstructionHandler;
@@ -215,9 +254,50 @@ impl VM {
         handlers[0xA2] = op_store as InstructionHandler;
         handlers[0xA3] = op_allocr as InstructionHandler;
         handlers[0xA4] = op_load as InstructionHandler;
+        handlers[0xA5] = op_allocr_nogc as InstructionHandler;
         // ...
         handlers
     };
+
+    fn fetch_dstack_refs(&mut self) -> HashSet<u64> {
+        let mut res: HashSet<u64> = HashSet::new();
+        let len = self.stack.stack.len();
+        if (len == 0) {
+            return res;
+        }
+
+        for i in 0..(len.saturating_sub(1)) {
+            if (self.stack.types[i] == RegTypes::address) {
+                res.insert(self.stack.stack[i]);
+            }
+        }
+        res
+    }
+
+    fn gc_finish_cleanup(&mut self, ptrs: Vec<u64>) {
+        for ptr in ptrs {
+            match self.heap.free(ptr) {
+                Ok(_) => {}
+                Err(_) => {
+                    println!(
+                        "INFO: No object with ptr {:x} found in heap in GC cleanup",
+                        ptr
+                    );
+                    self.gc.main_refs.remove(&ptr);
+                }
+            }
+        }
+    }
+
+    fn gc_gen_reg_set(&mut self) -> HashSet<u64> {
+        let mut res: HashSet<u64> = HashSet::new();
+        for (idx, reg) in self.registers.iter().enumerate() {
+            if self.reg_types[idx] == RegTypes::address {
+                res.insert(*reg);
+            }
+        }
+        res
+    }
 
     fn op_unimplemented(&mut self) {
         //self.err_coredump();
@@ -1128,6 +1208,36 @@ impl VM {
         return;
     }
 
+    fn op_ptou(&mut self) {
+        // 0x55, size: 3
+        // ptou rdst rsrc
+        // Pointer (Address) to uint. If the register the same,
+        // Doesn't change the actual value, only tracked type
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        self.registers[r_dest_ind] = self.registers[r_src_ind];
+        self.reg_types[r_dest_ind] = RegTypes::uint64;
+
+        self.ip += 3;
+        return;
+    }
+
+    fn op_utop(&mut self) {
+        // 0x57, size: 3
+        // ptou rdst rsrc
+        // uint to pointer (Address). If the register the same,
+        // Doesn't change the actual value, only tracked type
+        let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
+        let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
+
+        self.registers[r_dest_ind] = self.registers[r_src_ind];
+        self.reg_types[r_dest_ind] = RegTypes::address;
+
+        self.ip += 3;
+        return;
+    }
+
     fn op_movr(&mut self) {
         // 0x60, size: 3
         // Copies value of R src into R dest, saving the type.
@@ -1633,11 +1743,11 @@ impl VM {
         res.extend(&clone_placed(&self.memory));
         res.extend(&(zeros.clone()));
 
-        let stack_u8_cl: Vec<u8> = clone_placed_64(&self.stack)
-            .iter()
-            .flat_map(|num| num.to_be_bytes())
-            .collect();
-        res.extend(&stack_u8_cl);
+        // let stack_u8_cl: Vec<u8> = clone_placed_64(&self.stack)
+        //     .iter()
+        //     .flat_map(|num| num.to_be_bytes())
+        //     .collect();
+        // res.extend(&stack_u8_cl);
         res.extend(&zeros);
         res.extend(&(clone_placed(&self.heap.heap)));
         res

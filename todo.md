@@ -1,1 +1,1 @@
-gc
+gc: stack, ds, heap links

@@ -4,3 +4,9 @@ pre1:
 - inc/dec instructions
 - data segment const (as a flag of type)
 - gota do gc next!
+pre2:
+- GC
+- now allocates memory based on available memory by default
+- stack, callstack separate structs
+
+todo: getting refs for gc from ds

@@ -1,4 +1,4 @@
-# Simple Virutal machine using 64-bit registers, static typization, etc.
+# Simple Virtual machine using 64-bit registers, static typization, etc.
 ## Features
 - Own and simple bytecode
 - Powerful heap allocator with custom "Split/merge first-fit" strategy

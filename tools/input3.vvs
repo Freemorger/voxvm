@@ -1,0 +1,17 @@
+section text
+.start
+    uload r1 15 ; uload - unsigned int load
+    uload r2 19
+    call @sum2
+
+    ncall 1 r1 ; println
+    halt
+
+func sum2
+    uadd r1 r2
+    ret
+
+section data
+    num int 15
+    PI const float 3.14
+    msg str "hello, more quote: "hi again". "

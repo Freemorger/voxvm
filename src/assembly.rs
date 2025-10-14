@@ -687,6 +687,8 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "itof".to_string() => vec![LexTypes::Op(0x53), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "ftou".to_string() => vec![LexTypes::Op(0x54), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "ftoi".to_string() => vec![LexTypes::Op(0x55), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "ptou".to_string() => vec![LexTypes::Op(0x56), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "utop".to_string() => vec![LexTypes::Op(0x57), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "movr".to_string() => vec![LexTypes::Op(0x60), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "or".to_string() => vec![LexTypes::Op(0x61), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "and".to_string() => vec![LexTypes::Op(0x62), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
@@ -714,7 +716,8 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "free".to_string() => vec![LexTypes::Op(0xA1), LexTypes::Size(2), LexTypes::Reg((0))],
         "store".to_string() => vec![LexTypes::Op(0xA2), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "allocr".to_string() => vec![LexTypes::Op(0xA3), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
-        "load".to_string() => vec![LexTypes::Op(0xA4), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)]
+        "load".to_string() => vec![LexTypes::Op(0xA4), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "allocr_nogc".to_string() => vec![LexTypes::Op(0xA5), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
     }
 }
 

@@ -3,7 +3,7 @@ use crate::vm::{RegTypes, VM, args_to_u64};
 pub fn op_call(vm: &mut VM) {
     // 0x90, size: 9
     // call ind (index of function in func table)
-    if (vm.call_stack.len() + 1 > vm.rec_depth_max) {
+    if (vm.call_stack.stack.len() + 1 > vm.rec_depth_max) {
         panic!("Recursion depth exceed at IP = {}!", vm.ip);
     }
 
