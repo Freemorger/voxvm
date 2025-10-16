@@ -9,4 +9,4 @@ pre2:
 - now allocates memory based on available memory by default
 - stack, callstack separate structs
 
-todo: getting refs for gc from ds
+todo: getting refs for gc from ds (some system with sep hashset)

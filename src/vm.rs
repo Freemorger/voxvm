@@ -125,13 +125,8 @@ impl VM {
             //println!("DBG: cur opcode: {}", self.ip);
             Self::OPERATIONS[opcode as usize](self);
 
-            if (since_cleanup >= 100) {
-                // running gc after each 100 instructions
-                // println!(
-                //     "Running GC interrupt at opcode 0x{:x}. Alloced block count: {}",
-                //     self.memory[self.ip],
-                //     self.heap.allocated.len()
-                // );
+            if (since_cleanup >= 250) {
+                // running gc after each 250 instructions
                 let start = Instant::now();
 
                 let regs_hashset: HashSet<u64> = self.gc_gen_reg_set();
@@ -145,11 +140,6 @@ impl VM {
                 self.gc_finish_cleanup(addrs);
 
                 let elapsed = start.elapsed();
-                // println!(
-                //     "Finished GC interrupt. Time elapsed: {:?}, Alloced block count: {}",
-                //     elapsed,
-                //     self.heap.allocated.len()
-                // );
                 since_cleanup = 0;
             } else {
                 since_cleanup += 1;
@@ -164,7 +154,6 @@ impl VM {
                 self.ip
             );
         }
-        //println!("{:?}", self.heap.free_list);
     }
 
     const OPERATIONS: [InstructionHandler; 256] = {

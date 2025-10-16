@@ -1,29 +1,11 @@
 section text
 .start
-    #call @stress_gc
-
-    alloc r10 8
-
-    alloc r12 64
-    jexc @heap_allocation_fault @fail_alloc
-
-    alloc r13 64
-    jexc @heap_allocation_fault @fail_alloc
-
-    store r12 r13
-    xor r13 r13
-    xor r12 r12
-
-
+    call @stress_gc
     halt
 
     label exit
         ret
 
-    label negsqrt
-        dsload r3 fail_sqrt_msg 0
-        ncall 1 r3
-        halt
 
     label fail_alloc
         dsload r3 fail_msg 0
@@ -47,7 +29,7 @@ section text
 
 func stress_gc
     uload r10 0 ; ctr
-    uload r11 100 ; stop
+    uload r11 210 ; stop
     label loop_stress
         ucmp r10 r11
         jz @exit
@@ -69,7 +51,7 @@ func stress_nogc
         allocr_nogc r12 r13
         jexc @heap_allocation_fault @fail_alloc
 
-        free r12
+        #free r12
 
         uinc r10
         jmp @loop_stress_nogc
@@ -79,4 +61,3 @@ section data
     fail_free_msg str "heap free fault"
     fail_write_msg str "heap write err"
     fail_read_msg str "heap read fault"
-    fail_sqrt_msg str "negative_sqrt"
