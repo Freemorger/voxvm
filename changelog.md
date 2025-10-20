@@ -1,12 +1,8 @@
-CHANGELOG v7:
+CHANGELOG v8:
 pre1:
-- formated sizes in args, init messages (e.g. `--init-ram=100MB`)
-- inc/dec instructions
-- data segment const (as a flag of type)
-- gota do gc next!
-pre2:
-- GC
-- now allocates memory based on available memory by default
-- stack, callstack separate structs
-
-todo: getting refs for gc from ds (some system with sep hashset)
+- operations gsf (), usf () for getting/updating stack frames respectively
+- native interface, see src/native.rs
+todo:
+- finish native (+heap integration)
+- dlbc instr
+- registers refactor

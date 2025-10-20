@@ -1,0 +1,6 @@
+name = "test_lib"
+lib_filename_linux = "nconfigs/libs/libtestfr.so"
+version = "1.0.0"
+
+[functions]
+unsigned_add = 0x100

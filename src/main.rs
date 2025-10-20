@@ -12,6 +12,7 @@ mod fileformats;
 mod func_ops;
 mod gc;
 mod heap;
+mod native;
 mod stack;
 mod vm;
 
@@ -19,7 +20,7 @@ fn main() {
     let mut sys = System::new_all();
     sys.refresh_memory();
     let available_ram = sys.available_memory();
-    let sysram_multiplier: f64 = 0.01f64;
+    let sysram_multiplier: f64 = 0.001f64;
 
     let DEFAULT_INIT_RAM: usize = (available_ram as f64 * sysram_multiplier).round() as usize;
     let DEFAULT_INIT_STACK: usize = DEFAULT_INIT_RAM / 2;
@@ -39,6 +40,8 @@ fn main() {
     let mut coredump_on_exit: bool = false;
 
     let mut recursion_depth_limit: Option<usize> = None;
+
+    let mut native_cfgs: Option<String> = None;
 
     for arg in env::args() {
         if let Some(val) = arg.strip_prefix("--init-ram=") {
@@ -117,6 +120,14 @@ fn main() {
                 Err(_) => {}
             }
         }
+        if let Some(val) = arg.strip_prefix("--native-configs=") {
+            match val.parse::<String>() {
+                Ok(st) => native_cfgs = Some(st.to_string()),
+                Err(_) => {
+                    eprintln!("ERROR: Parsing native-configs error.");
+                }
+            }
+        }
     }
 
     match vas_input_filename {
@@ -192,6 +203,19 @@ fn main() {
         println!("\t --vve=name - loads a vve (voxvm executable) file.");
         println!("\t More info/args in README.md");
         exit(0);
+    }
+
+    match native_cfgs {
+        Some(v) => {
+            let res = vm_instance.nativesys.read_cfg(&v);
+            match res {
+                Ok(()) => {}
+                Err(e) => {
+                    eprintln!("ERROR While parsing native conf: {}", e.to_string());
+                }
+            }
+        }
+        None => {}
     }
 
     vm_instance.run();

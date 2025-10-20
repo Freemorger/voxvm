@@ -708,6 +708,8 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "pop".to_string() => vec![LexTypes::Op(0x81), LexTypes::Size(2), LexTypes::Reg(0)],
         "pushall".to_string() => vec![LexTypes::Op(0x82), LexTypes::Size(1)],
         "popall".to_string() => vec![LexTypes::Op(0x83), LexTypes::Size(1)],
+        "gsf".to_string() => vec![LexTypes::Op(0x84), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "usf".to_string() => vec![LexTypes::Op(0x85), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "call".to_string() => vec![LexTypes::Op(0x90), LexTypes::Size(9), LexTypes::Value(0)],
         "ret".to_string() => vec![LexTypes::Op(0x91), LexTypes::Size(1)],
         "fnstind".to_string() => vec![LexTypes::Op(0x92), LexTypes::Size(10), LexTypes::Reg((0)), LexTypes::FuncInd((0))],

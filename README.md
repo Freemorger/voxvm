@@ -18,6 +18,7 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
       \--vas-out=filename  specifies voxvm assembly output filename
       \--coredump_exit  coredumps after halt, saves it into `voxvm.dump` file
       \--max-recursion sets maximal recursion limit
+      \--native-configs specifies directory with native libraries configs
 ```
 
 ## Last implementations + todos:
@@ -32,8 +33,8 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
 | stack                 | [X]            |
 | functions, call stack | [X]            |
 | heap                  | [X]            |
-| GC                    | [~]            |
-| better ffi            | []            |
+| GC                    | [X]            |
+| better ffi            | [~]            |
 | soon more..           | []             |
 
 ## Instruction (not really) actual info table: https://docs.google.com/spreadsheets/d/1bpkqAGjcDWKBDQTO2B2RmPHxcuN5EIkYm-DKRgUFVq8

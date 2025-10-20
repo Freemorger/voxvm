@@ -7,7 +7,8 @@ use crate::{
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
     gc::GC,
     heap::{Heap, op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store},
-    stack::{VMStack, op_pop, op_popall, op_push, op_pushall},
+    native::NativeService,
+    stack::{VMStack, op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf},
 };
 use core::panic;
 use std::{
@@ -41,7 +42,7 @@ pub struct VM {
     pub gc: GC,
     data_base: u64, // pointer at data segment start
     data_size: u64,
-    nativecalls: std::collections::HashMap<u16, NativeFn>,
+    pub nativesys: NativeService,
     running: bool,
     float_epsilon: f64,
     pub func_table: Vec<u64>,
@@ -69,7 +70,7 @@ impl VM {
             heap: Heap::new(init_heap),
             data_base: 0x0,
             data_size: 0,
-            nativecalls: HashMap::new(),
+            nativesys: NativeService::new(),
             running: true,
             float_epsilon: 1e-10,
             func_table: Vec::new(),
@@ -120,6 +121,7 @@ impl VM {
     pub fn run(&mut self) {
         let mut since_cleanup: usize = 0;
 
+        let run_start = Instant::now();
         while (self.ip < self.memory.capacity()) && (self.running) {
             let opcode = self.memory[self.ip];
             //println!("DBG: cur opcode: {}", self.ip);
@@ -140,6 +142,8 @@ impl VM {
                 self.gc_finish_cleanup(addrs);
 
                 let elapsed = start.elapsed();
+
+                //println!("elapsed on gc: {:?}", elapsed);
                 since_cleanup = 0;
             } else {
                 since_cleanup += 1;
@@ -154,6 +158,8 @@ impl VM {
                 self.ip
             );
         }
+        let end_run = run_start.elapsed();
+        println!("Elapsed on end_run: {:?}", end_run);
     }
 
     const OPERATIONS: [InstructionHandler; 256] = {
@@ -233,6 +239,8 @@ impl VM {
         handlers[0x81] = op_pop as InstructionHandler;
         handlers[0x82] = op_pushall as InstructionHandler;
         handlers[0x83] = op_popall as InstructionHandler;
+        handlers[0x84] = op_gsf as InstructionHandler;
+        handlers[0x85] = op_usf as InstructionHandler;
         handlers[0x90] = op_call as InstructionHandler;
         handlers[0x91] = op_ret as InstructionHandler;
         handlers[0x92] = op_fnstind as InstructionHandler;
@@ -255,8 +263,8 @@ impl VM {
         }
 
         for i in 0..(len.saturating_sub(1)) {
-            if (self.stack.types[i] == RegTypes::address) {
-                res.insert(self.stack.stack[i]);
+            if (self.stack.stack[i].ftype == RegTypes::address) {
+                res.insert(self.stack.stack[i].val);
             }
         }
         res
@@ -304,7 +312,7 @@ impl VM {
         let ncall_num: u16 = args_to_u16(&self.memory[(self.ip + 1)..(self.ip + 3)]);
         match ncall_num {
             0x1 => self.ncall_println(),
-            _ => panic!("Unknown ncall code: {}", ncall_num),
+            other => self.nativesys.call_code(other),
         }
     }
 
@@ -468,7 +476,7 @@ impl VM {
 
     fn op_udec(&mut self) {
         // 0x1a, size: 2
-        // uinc Rdest
+        // udec Rdest
         let r_dest_int: usize = self.memory[(self.ip + 1)] as usize;
         self.registers[r_dest_int] -= 1;
         if self.registers[r_dest_int] == 0 {
