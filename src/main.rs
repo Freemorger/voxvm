@@ -13,6 +13,8 @@ mod func_ops;
 mod gc;
 mod heap;
 mod native;
+#[macro_use]
+mod registers;
 mod stack;
 mod vm;
 

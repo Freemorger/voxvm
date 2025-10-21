@@ -1,1 +1,4 @@
-gc: stack, ds, heap links
+todo:
+- finish native (+heap integration)
+- dlbc instr
+- registers refactor

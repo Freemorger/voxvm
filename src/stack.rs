@@ -1,4 +1,7 @@
-use crate::vm::{RegTypes, VM};
+use crate::{
+    registers::Register,
+    vm::{RegTypes, VM},
+};
 
 #[derive(Debug)]
 pub struct VMStack {
@@ -62,7 +65,7 @@ pub fn op_push(vm: &mut VM) {
     // push Rsrc
     // Does not zero the Rsrc by default
     let r_src_ind: usize = vm.memory[(vm.ip + 1)] as usize;
-    let val: u64 = vm.registers[r_src_ind];
+    let val: u64 = vm.registers[r_src_ind].as_u64_bitwise();
     let r_type: RegTypes = vm.reg_types[r_src_ind];
 
     // Pushes value, then type.
@@ -99,7 +102,7 @@ pub fn op_pop(vm: &mut VM) {
         }
     };
 
-    vm.registers[r_dest_ind] = val;
+    vm.registers[r_dest_ind] = Register::from_u64_bits(val, r_type);
     vm.reg_types[r_dest_ind] = r_type;
 
     vm.ip += 2;
@@ -110,7 +113,8 @@ pub fn op_pushall(vm: &mut VM) {
     // 0x82, size: 1
     // pushall - pushes all register values into the stack. (with metadata - types)
     for i in 0..vm.registers.len().saturating_sub(1) {
-        vm.stack.push(vm.registers[i], vm.reg_types[i]);
+        vm.stack
+            .push(vm.registers[i].as_u64_bitwise(), vm.reg_types[i]);
     }
 
     vm.ip += 1;
@@ -142,7 +146,7 @@ pub fn op_popall(vm: &mut VM) {
             }
         };
 
-        vm.registers[i] = val;
+        vm.registers[i] = Register::from_u64_bits(val, r_type);
         vm.reg_types[i] = r_type;
     }
 
@@ -157,11 +161,11 @@ pub fn op_gsf(vm: &mut VM) {
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
     let r_src_ind: usize = vm.memory[(vm.ip + 2)] as usize;
 
-    let ind: usize = vm.registers[r_src_ind] as usize;
+    let ind: usize = vm.registers[r_src_ind].as_u64() as usize;
 
     match vm.stack.get_val(ind) {
         Some(v) => {
-            vm.registers[r_dest_ind] = v.val;
+            vm.registers[r_dest_ind] = Register::from_u64_bits(v.val, v.ftype);
             vm.reg_types[r_dest_ind] = v.ftype;
         }
         None => {}
@@ -178,8 +182,8 @@ pub fn op_usf(vm: &mut VM) {
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
     let r_src_ind: usize = vm.memory[(vm.ip + 2)] as usize;
 
-    let ind: usize = vm.registers[r_dest_ind] as usize;
-    let newval: u64 = vm.registers[r_src_ind];
+    let ind: usize = vm.registers[r_dest_ind].as_u64() as usize;
+    let newval: u64 = vm.registers[r_src_ind].as_u64_bitwise();
     let newtype: RegTypes = vm.reg_types[r_src_ind];
 
     match vm.stack.update_val(ind, newval, newtype) {

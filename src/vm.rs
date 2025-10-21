@@ -8,6 +8,7 @@ use crate::{
     gc::GC,
     heap::{Heap, op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store},
     native::NativeService,
+    registers::Register,
     stack::{VMStack, op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf},
 };
 use core::panic;
@@ -32,7 +33,7 @@ pub enum RegTypes {
 
 #[derive(Debug)]
 pub struct VM {
-    pub registers: [u64; 32],
+    pub registers: [Register; 32],
     pub reg_types: [RegTypes; 32],
     flags: [u8; 4], // of, zf, nf, cf
     pub ip: usize,
@@ -61,7 +62,7 @@ impl VM {
         max_recursion_depth: usize,
     ) -> VM {
         VM {
-            registers: [0; 32],
+            registers: [Register::uint(0); 32],
             reg_types: [RegTypes::uint64; 32],
             flags: [0; 4],
             ip: 0x0,
@@ -159,7 +160,7 @@ impl VM {
             );
         }
         let end_run = run_start.elapsed();
-        println!("Elapsed on end_run: {:?}", end_run);
+        //println!("Elapsed on end_run: {:?}", end_run);
     }
 
     const OPERATIONS: [InstructionHandler; 256] = {
@@ -289,7 +290,7 @@ impl VM {
         let mut res: HashSet<u64> = HashSet::new();
         for (idx, reg) in self.registers.iter().enumerate() {
             if self.reg_types[idx] == RegTypes::address {
-                res.insert(*reg);
+                res.insert(reg.as_u64());
             }
         }
         res
@@ -312,7 +313,7 @@ impl VM {
         let ncall_num: u16 = args_to_u16(&self.memory[(self.ip + 1)..(self.ip + 3)]);
         match ncall_num {
             0x1 => self.ncall_println(),
-            other => self.nativesys.call_code(other),
+            other => {} //self.nativesys.call_code(other),
         }
     }
 
@@ -326,7 +327,7 @@ impl VM {
         let register_ind: u8 = self.memory[(self.ip + 1) as usize];
         let value: u64 = args_to_u64(&self.memory[(self.ip + 2)..(self.ip + 10)]);
 
-        self.registers[register_ind as usize] = value;
+        self.registers[register_ind as usize] = Register::uint(value);
         self.reg_types[register_ind as usize] = RegTypes::uint64;
         self.ip += 10;
         return;
@@ -358,7 +359,7 @@ impl VM {
         let toadd_reg_ind: u8 = self.memory[(self.ip + 2) as usize];
 
         self.registers[in_reg_ind as usize] -= self.registers[toadd_reg_ind as usize];
-        if self.registers[in_reg_ind as usize] == 0 {
+        if self.registers[in_reg_ind as usize] == Register::uint(0) {
             self.flags[1] = 1;
         } else {
             self.flags[1] = 0;
@@ -372,8 +373,9 @@ impl VM {
         let reg_out: u8 = self.memory[self.ip + 1];
         let reg_1: u8 = self.memory[self.ip + 2];
         let reg_2: u8 = self.memory[self.ip + 3];
-        if self.registers[reg_2 as usize] == 0 {
-            panic!("DIVZERO Exception at addr {}", self.ip);
+        if self.registers[reg_2 as usize] == Register::uint(0) {
+            eprintln!("DIVZERO Exception at addr {}", self.ip);
+            self.exceptions_active.push(Exception::ZeroDivision);
         }
 
         self.registers[reg_out as usize] =
@@ -427,8 +429,8 @@ impl VM {
         let reg_dest: usize = self.memory[self.ip + 1] as usize;
         let reg_src: usize = self.memory[self.ip + 2] as usize;
 
-        let res: u64 = self.registers[reg_src].isqrt();
-        self.registers[reg_dest] = res;
+        let res: u64 = self.registers[reg_src].as_u64().isqrt();
+        self.registers[reg_dest] = Register::uint(res);
         self.reg_types[reg_dest] = RegTypes::uint64;
 
         if res == 0 {
@@ -447,8 +449,10 @@ impl VM {
         let reg_dest: usize = self.memory[self.ip + 1] as usize;
         let reg_src: usize = self.memory[self.ip + 2] as usize;
 
-        let res: u64 = self.registers[reg_dest].pow(self.registers[reg_src] as u32);
-        self.registers[reg_dest] = res;
+        let res: u64 = self.registers[reg_dest]
+            .as_u64()
+            .pow(self.registers[reg_src].as_u64() as u32);
+        self.registers[reg_dest] = Register::uint(res);
         if res == 0 {
             self.flags[1] = 1; //zf
         } else {
@@ -463,8 +467,8 @@ impl VM {
         // 0x19, size: 2
         // uinc Rdest
         let r_dest_int: usize = self.memory[(self.ip + 1)] as usize;
-        self.registers[r_dest_int] += 1;
-        if self.registers[r_dest_int] == 0 {
+        self.registers[r_dest_int] += Register::uint(1);
+        if self.registers[r_dest_int] == Register::uint(0) {
             self.flags[0] = 1; // of
         } else {
             self.flags[0] = 0;
@@ -478,8 +482,8 @@ impl VM {
         // 0x1a, size: 2
         // udec Rdest
         let r_dest_int: usize = self.memory[(self.ip + 1)] as usize;
-        self.registers[r_dest_int] -= 1;
-        if self.registers[r_dest_int] == 0 {
+        self.registers[r_dest_int] -= Register::uint(1);
+        if self.registers[r_dest_int] == Register::uint(0) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
@@ -494,7 +498,7 @@ impl VM {
         let register_ind: u8 = self.memory[(self.ip + 1) as usize];
         let value: i64 = args_to_i64(&self.memory[(self.ip + 2)..(self.ip + 10)]);
 
-        self.registers[register_ind as usize] = value as u64;
+        self.registers[register_ind as usize] = Register::int(value);
         self.reg_types[register_ind as usize] = RegTypes::int64;
 
         self.ip += 10;
@@ -506,9 +510,9 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res: i64 = (self.registers[dest_r_ind as usize] as i64)
-            + (self.registers[src_r_ind as usize] as i64);
-        self.registers[dest_r_ind as usize] = res as u64;
+        let res: Register =
+            self.registers[dest_r_ind as usize] + self.registers[src_r_ind as usize];
+        self.registers[dest_r_ind as usize] = res;
 
         self.ip += 3;
         return;
@@ -519,9 +523,9 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res: i64 = (self.registers[dest_r_ind as usize] as i64)
-            * (self.registers[src_r_ind as usize] as i64);
-        self.registers[dest_r_ind as usize] = res as u64;
+        let res: Register =
+            self.registers[dest_r_ind as usize] * self.registers[src_r_ind as usize];
+        self.registers[dest_r_ind as usize] = res;
 
         self.ip += 3;
         return;
@@ -532,9 +536,9 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res: i64 = (self.registers[dest_r_ind as usize] as i64)
-            - (self.registers[src_r_ind as usize] as i64);
-        self.registers[dest_r_ind as usize] = res as u64;
+        let res: Register =
+            self.registers[dest_r_ind as usize] - self.registers[src_r_ind as usize];
+        self.registers[dest_r_ind as usize] = res;
 
         self.ip += 3;
         return;
@@ -546,12 +550,11 @@ impl VM {
         let reg_1: u8 = self.memory[(self.ip + 2) as usize];
         let reg_2: u8 = self.memory[(self.ip + 3) as usize];
 
-        if self.registers[reg_2 as usize] == 0 {
+        if self.registers[reg_2 as usize] == Register::int(0) {
             panic!("DIVZERO exception at {}", self.ip);
         }
-        let res: i64 =
-            (self.registers[reg_1 as usize] as i64) / (self.registers[reg_2 as usize] as i64);
-        self.registers[dest_r_ind as usize] = res as u64;
+        let res: Register = self.registers[reg_1 as usize] / self.registers[reg_2 as usize];
+        self.registers[dest_r_ind as usize] = res;
 
         self.reg_types[dest_r_ind as usize] = RegTypes::int64;
 
@@ -565,12 +568,11 @@ impl VM {
         let reg_1: u8 = self.memory[(self.ip + 2) as usize];
         let reg_2: u8 = self.memory[(self.ip + 3) as usize];
 
-        if self.registers[reg_2 as usize] == 0 {
+        if self.registers[reg_2 as usize] == Register::int(0) {
             panic!("DIVZERO exception at {}", self.ip);
         }
-        let res: i64 =
-            (self.registers[reg_1 as usize] as i64) % (self.registers[reg_2 as usize] as i64);
-        self.registers[dest_r_ind as usize] = res as u64;
+        let res: Register = self.registers[reg_1 as usize] % self.registers[reg_2 as usize];
+        self.registers[dest_r_ind as usize] = res;
 
         self.reg_types[dest_r_ind as usize] = RegTypes::int64;
 
@@ -583,10 +585,8 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let isLess: bool = (self.registers[dest_r_ind as usize] as i64)
-            < (self.registers[src_r_ind as usize] as i64);
-        let isEqu: bool = (self.registers[dest_r_ind as usize] as i64)
-            == (self.registers[src_r_ind as usize] as i64);
+        let isLess: bool = self.registers[dest_r_ind as usize] < self.registers[src_r_ind as usize];
+        let isEqu: bool = self.registers[dest_r_ind as usize] == self.registers[src_r_ind as usize];
 
         if isLess {
             self.flags[2] = 1; // nf
@@ -609,8 +609,8 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = (i64::abs(self.registers[reg_src_ind] as i64)) as u64;
-        self.registers[reg_dest_ind] = res;
+        let res: i64 = i64::abs(self.registers[reg_src_ind].as_i64());
+        self.registers[reg_dest_ind] = Register::int(res);
         self.reg_types[reg_dest_ind] = RegTypes::int64;
 
         if res == 0 {
@@ -629,16 +629,16 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = (-(self.registers[reg_src_ind] as i64)) as u64;
+        let res: Register = -(self.registers[reg_src_ind]);
         self.registers[reg_dest_ind] = res;
         self.reg_types[reg_dest_ind] = RegTypes::int64;
 
-        if res == 0 {
+        if res == Register::int(0) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if (res as i64) < 0 {
+        if res < Register::int(0) {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -654,13 +654,13 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        if (self.registers[reg_src_ind] as i64) < 0 {
+        if self.registers[reg_src_ind] < Register::int(0) {
             self.exceptions_active.push(Exception::NegativeSqrt);
             self.ip += 3;
             return;
         }
-        let res: u64 = (self.registers[reg_src_ind] as i64).isqrt() as u64;
-        self.registers[reg_dest_ind] = res;
+        let res: i64 = self.registers[reg_src_ind].as_i64().isqrt();
+        self.registers[reg_dest_ind] = Register::int(res);
         self.reg_types[reg_dest_ind] = RegTypes::int64;
 
         if res == 0 {
@@ -679,9 +679,9 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 =
-            ((self.registers[reg_dest_ind] as i64).pow(self.registers[reg_src_ind] as u32)) as u64;
-        self.registers[reg_dest_ind] = res;
+        let res: i64 = (self.registers[reg_dest_ind].as_i64())
+            .pow(self.registers[reg_src_ind].as_i64() as u32);
+        self.registers[reg_dest_ind] = Register::int(res);
 
         if res == 0 {
             self.flags[1] = 1; // zf
@@ -702,14 +702,14 @@ impl VM {
         // iinc rdst
         let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
 
-        let new_val: i64 = (self.registers[r_dst_ind] as i64) + 1;
-        self.registers[r_dst_ind] = new_val as u64;
-        if (new_val == 0) {
+        let new_val: Register = self.registers[r_dst_ind] + Register::int(1);
+        self.registers[r_dst_ind] = new_val;
+        if (new_val == Register::int(0)) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if (new_val < 0) {
+        if (new_val < Register::int(0)) {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -724,14 +724,14 @@ impl VM {
         // idec rdst
         let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
 
-        let new_val: i64 = (self.registers[r_dst_ind] as i64) - 1;
-        self.registers[r_dst_ind] = new_val as u64;
-        if (new_val == 0) {
+        let new_val: Register = self.registers[r_dst_ind] - Register::int(1);
+        self.registers[r_dst_ind] = new_val;
+        if (new_val == Register::int(0)) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if (new_val < 0) {
+        if (new_val < Register::int(0)) {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -747,7 +747,7 @@ impl VM {
         let float_val: f64 =
             args_to_f64(&self.memory[((self.ip + 2) as usize)..((self.ip + 10) as usize)]);
 
-        self.registers[dest_r_ind as usize] = float_val.to_bits();
+        self.registers[dest_r_ind as usize] = Register::float(float_val);
         self.reg_types[dest_r_ind as usize] = RegTypes::float64;
 
         self.ip += 10;
@@ -759,9 +759,9 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let result: f64 = f64::from_bits(self.registers[dest_r_ind as usize])
-            + f64::from_bits(self.registers[src_r_ind as usize]);
-        self.registers[dest_r_ind as usize] = result.to_bits();
+        let result: Register =
+            self.registers[dest_r_ind as usize] + self.registers[src_r_ind as usize];
+        self.registers[dest_r_ind as usize] = result;
 
         self.ip += 3;
         return;
@@ -772,9 +772,9 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let result: f64 = f64::from_bits(self.registers[dest_r_ind as usize])
-            * f64::from_bits(self.registers[src_r_ind as usize]);
-        self.registers[dest_r_ind as usize] = result.to_bits();
+        let result: Register =
+            self.registers[dest_r_ind as usize] * self.registers[src_r_ind as usize];
+        self.registers[dest_r_ind as usize] = result;
 
         self.ip += 3;
         return;
@@ -785,9 +785,9 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let result: f64 = f64::from_bits(self.registers[dest_r_ind as usize])
-            - f64::from_bits(self.registers[src_r_ind as usize]);
-        self.registers[dest_r_ind as usize] = result.to_bits();
+        let result: Register =
+            self.registers[dest_r_ind as usize] - self.registers[src_r_ind as usize];
+        self.registers[dest_r_ind as usize] = result;
 
         self.ip += 3;
         return;
@@ -799,14 +799,14 @@ impl VM {
         let reg_1_ind: u8 = self.memory[(self.ip + 2) as usize];
         let reg_2_ind: u8 = self.memory[(self.ip + 3) as usize];
 
-        if f64::from_bits(self.registers[reg_2_ind as usize]) == 0f64 {
+        if self.registers[reg_2_ind as usize] == Register::float(0f64) {
             self.exceptions_active.push(Exception::ZeroDivision);
             self.ip += 4;
             return;
         }
-        let result: f64 = f64::from_bits(self.registers[reg_1_ind as usize])
-            / f64::from_bits(self.registers[reg_2_ind as usize]);
-        self.registers[dest_r_ind as usize] = result.to_bits();
+        let result: Register =
+            self.registers[reg_1_ind as usize] / self.registers[reg_2_ind as usize];
+        self.registers[dest_r_ind as usize] = result;
         self.reg_types[dest_r_ind as usize] = RegTypes::float64;
 
         self.ip += 4;
@@ -819,9 +819,9 @@ impl VM {
         let reg_1_ind: u8 = self.memory[(self.ip + 2) as usize];
         let reg_2_ind: u8 = self.memory[(self.ip + 3) as usize];
 
-        let result: f64 = f64::from_bits(self.registers[reg_1_ind as usize])
-            % f64::from_bits(self.registers[reg_2_ind as usize]);
-        self.registers[dest_r_ind as usize] = result.to_bits();
+        let result: Register =
+            self.registers[reg_1_ind as usize] % self.registers[reg_2_ind as usize];
+        self.registers[dest_r_ind as usize] = result;
         self.reg_types[dest_r_ind as usize] = RegTypes::float64;
 
         self.ip += 4;
@@ -833,10 +833,8 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let isLess: bool = (f64::from_bits(self.registers[dest_r_ind as usize]))
-            < (f64::from_bits(self.registers[src_r_ind as usize]));
-        let isEqu: bool = (f64::from_bits(self.registers[dest_r_ind as usize]))
-            == (f64::from_bits(self.registers[src_r_ind as usize]));
+        let isLess: bool = self.registers[dest_r_ind as usize] < self.registers[src_r_ind as usize];
+        let isEqu: bool = self.registers[dest_r_ind as usize] == self.registers[src_r_ind as usize];
 
         if isLess {
             self.flags[2] = 1; // nf
@@ -858,12 +856,12 @@ impl VM {
         let dest_r_ind: u8 = self.memory[(self.ip + 1) as usize];
         let src_r_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let dest_val: f64 = f64::from_bits(self.registers[dest_r_ind as usize]);
-        let src_val: f64 = f64::from_bits(self.registers[src_r_ind as usize]);
-        let epsilon: f64 = self.float_epsilon;
+        let dest_val: Register = self.registers[dest_r_ind as usize];
+        let src_val: Register = self.registers[src_r_ind as usize];
+        let epsilon: Register = Register::float(self.float_epsilon);
 
         let isLess: bool = (src_val - dest_val) > (epsilon);
-        let isEqu: bool = (dest_val - src_val).abs() < (epsilon);
+        let isEqu: bool = (dest_val - src_val).as_f64().abs() < (epsilon.as_f64());
 
         if isLess {
             self.flags[2] = 1; // nf
@@ -886,8 +884,8 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: f64 = f64::abs(f64::from_bits(self.registers[reg_src_ind]));
-        self.registers[reg_dest_ind] = res.to_bits();
+        let res: f64 = f64::abs(self.registers[reg_src_ind].as_f64());
+        self.registers[reg_dest_ind] = Register::float(res);
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
         if res == 0.0f64 {
@@ -906,16 +904,16 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: f64 = -(f64::from_bits(self.registers[reg_src_ind]));
-        self.registers[reg_dest_ind] = res.to_bits();
+        let res: Register = -(self.registers[reg_src_ind]);
+        self.registers[reg_dest_ind] = res;
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
-        if res == 0.0f64 {
+        if res == Register::float(0.0f64) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if res < 0.0f64 {
+        if res < Register::float(0.0f64) {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -931,13 +929,13 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        if f64::from_bits(self.registers[reg_src_ind]) < 0.0f64 {
+        if self.registers[reg_src_ind] < Register::float(0.0f64) {
             self.exceptions_active.push(Exception::NegativeSqrt);
             self.ip += 3;
             return;
         }
-        let res: f64 = f64::from_bits(self.registers[reg_src_ind]).sqrt();
-        self.registers[reg_dest_ind] = res.to_bits();
+        let res: f64 = self.registers[reg_src_ind].as_f64().sqrt();
+        self.registers[reg_dest_ind] = Register::float(res);
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
         if res == 0.0f64 {
@@ -956,9 +954,16 @@ impl VM {
         let reg_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let reg_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: f64 = f64::from_bits(self.registers[reg_dest_ind])
-            .powf(f64::from_bits(self.registers[reg_src_ind]));
-        self.registers[reg_dest_ind] = res.to_bits();
+        let res: f64 = self.registers[reg_dest_ind]
+            .as_f64()
+            .powf(self.registers[reg_src_ind].as_f64());
+        println!(
+            "DBG {} ** {} = {}",
+            self.registers[reg_dest_ind].as_f64(),
+            self.registers[reg_src_ind].as_f64(),
+            res
+        );
+        self.registers[reg_dest_ind] = Register::float(res);
         self.reg_types[reg_dest_ind] = RegTypes::float64;
 
         if res == 0.0f64 {
@@ -975,15 +980,15 @@ impl VM {
         // 0x3c, size: 2
         // finc rdst
         let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
-        let res: f64 = f64::from_bits(self.registers[r_dst_ind]) + 1f64;
+        let res: Register = self.registers[r_dst_ind] + Register::float(1f64);
 
-        self.registers[r_dst_ind] = res.to_bits();
-        if res == 0f64 {
+        self.registers[r_dst_ind] = res;
+        if res == Register::float(0.0f64) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if res < 0f64 {
+        if res < Register::float(0.0f64) {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -997,15 +1002,15 @@ impl VM {
         // 0x3d, size: 2
         // fdec rdst
         let r_dst_ind: usize = self.memory[(self.ip + 1)] as usize;
-        let res: f64 = f64::from_bits(self.registers[r_dst_ind]) - 1f64;
+        let res: Register = self.registers[r_dst_ind] - Register::float(1f64);
 
-        self.registers[r_dst_ind] = res.to_bits();
-        if res == 0f64 {
+        self.registers[r_dst_ind] = res;
+        if res == Register::float(0.0f64) {
             self.flags[1] = 1; // zf
         } else {
             self.flags[1] = 0;
         }
-        if res < 0f64 {
+        if res < Register::float(0.0f64) {
             self.flags[2] = 1; // nf
         } else {
             self.flags[2] = 0;
@@ -1121,8 +1126,8 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: i64 = self.registers[r_src_ind as usize] as i64;
-        self.registers[r_dest_ind as usize] = res_val as u64;
+        let res_val: i64 = self.registers[r_src_ind as usize].as_u64() as i64;
+        self.registers[r_dest_ind as usize] = Register::int(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::int64;
 
         self.ip += 3;
@@ -1135,9 +1140,9 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: u64 = (self.registers[r_src_ind as usize] as i64).abs() as u64;
+        let res_val: u64 = self.registers[r_src_ind as usize].as_i64() as u64;
 
-        self.registers[r_dest_ind as usize] = res_val;
+        self.registers[r_dest_ind as usize] = Register::uint(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::uint64;
 
         self.ip += 3;
@@ -1150,9 +1155,9 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: f64 = self.registers[r_src_ind as usize] as f64;
+        let res_val: f64 = self.registers[r_src_ind as usize].as_u64() as f64;
 
-        self.registers[r_dest_ind as usize] = res_val.to_bits();
+        self.registers[r_dest_ind as usize] = Register::float(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::float64;
 
         self.ip += 3;
@@ -1165,9 +1170,9 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: f64 = (self.registers[r_src_ind as usize] as i64) as f64;
+        let res_val: f64 = self.registers[r_src_ind as usize].as_i64() as f64;
 
-        self.registers[r_dest_ind as usize] = res_val.to_bits();
+        self.registers[r_dest_ind as usize] = Register::float(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::float64;
 
         self.ip += 3;
@@ -1180,9 +1185,9 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: u64 = f64::from_bits(self.registers[r_src_ind as usize]) as u64;
+        let res_val: u64 = self.registers[r_src_ind as usize].as_f64() as u64;
 
-        self.registers[r_dest_ind as usize] = res_val;
+        self.registers[r_dest_ind as usize] = Register::uint(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::uint64;
 
         self.ip += 3;
@@ -1195,9 +1200,9 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: i64 = f64::from_bits(self.registers[r_src_ind as usize]) as i64;
+        let res_val: i64 = self.registers[r_src_ind as usize].as_f64() as i64;
 
-        self.registers[r_dest_ind as usize] = res_val as u64;
+        self.registers[r_dest_ind as usize] = Register::int(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::int64;
 
         self.ip += 3;
@@ -1212,7 +1217,7 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        self.registers[r_dest_ind] = self.registers[r_src_ind];
+        self.registers[r_dest_ind] = Register::uint(self.registers[r_src_ind].as_u64());
         self.reg_types[r_dest_ind] = RegTypes::uint64;
 
         self.ip += 3;
@@ -1227,7 +1232,7 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        self.registers[r_dest_ind] = self.registers[r_src_ind];
+        self.registers[r_dest_ind] = Register::address(self.registers[r_src_ind].as_u64());
         self.reg_types[r_dest_ind] = RegTypes::address;
 
         self.ip += 3;
@@ -1254,10 +1259,10 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = self.registers[r_dest_ind] | self.registers[r_src_ind];
+        let res: Register = self.registers[r_dest_ind] | self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if res == 0 {
+        if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1274,10 +1279,10 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = self.registers[r_dest_ind] & self.registers[r_src_ind];
+        let res: Register = self.registers[r_dest_ind] & self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if res == 0 {
+        if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1294,10 +1299,10 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = !self.registers[r_src_ind];
+        let res: Register = !self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if res == 0 {
+        if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1314,10 +1319,10 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = self.registers[r_dest_ind] ^ self.registers[r_src_ind];
+        let res: Register = self.registers[r_dest_ind] ^ self.registers[r_src_ind];
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if res == 0 {
+        if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1334,8 +1339,8 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = self.registers[r_dest_ind] & self.registers[r_src_ind];
-        if res == 0 {
+        let res: Register = self.registers[r_dest_ind] & self.registers[r_src_ind];
+        if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1352,10 +1357,10 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 1) as usize] as usize;
         let r_src_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
 
-        let res: u64 = if self.registers[r_src_ind] == 0 { 1 } else { 0 };
+        let res: Register = self.registers[r_src_ind].logical_not();
         self.registers[r_dest_ind] = res;
         self.reg_types[r_dest_ind] = self.reg_types[r_src_ind];
-        if res == 0 {
+        if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
             self.flags[0] = 0;
@@ -1395,35 +1400,35 @@ impl VM {
             RegTypes::uint64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 self.registers[dest_reg_ind as usize] =
-                    args_to_u64(&self.memory[(abs_addr)..(abs_addr + 8)]);
+                    Register::uint(args_to_u64(&self.memory[(abs_addr)..(abs_addr + 8)]));
 
                 self.reg_types[dest_reg_ind as usize] = RegTypes::uint64;
             }
             RegTypes::int64 => {
                 let res: i64 = args_to_i64(&self.memory[(abs_addr)..(abs_addr + 8)]);
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = res as u64;
+                self.registers[dest_reg_ind as usize] = Register::int(res);
                 self.reg_types[dest_reg_ind as usize] = RegTypes::int64;
             }
             RegTypes::float64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 let res: f64 = args_to_f64(&self.memory[(abs_addr)..(abs_addr + 8)]);
-                self.registers[dest_reg_ind as usize] = res.to_bits();
+                self.registers[dest_reg_ind as usize] = Register::float(res);
                 self.reg_types[dest_reg_ind as usize] = RegTypes::float64;
             }
             RegTypes::StrAddr => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = abs_addr as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = Register::StrAddr(abs_addr as u64); // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::StrAddr;
             }
             RegTypes::address => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = Register::address(abs_addr as u64); // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::address;
             }
             RegTypes::ds_addr => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = Register::ds_addr(abs_addr as u64); // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::ds_addr;
             }
         }
@@ -1436,8 +1441,9 @@ impl VM {
         // 0x71, size: 11
         // dsload Rdest Roffset reladdr
         const const_flag: u8 = 0x10;
-        let offset: usize =
-            self.registers[self.memory[(self.ip + 2) as usize] as usize] as usize + 8 + 1; // 8 for
+        let offset: usize = (self.registers[self.memory[(self.ip + 2) as usize] as usize].as_u64()
+            + 8
+            + 1) as usize; // 8 for
         // length skip
         let rel_addr: usize =
             args_to_u64(&self.memory[(self.ip + 3 as usize)..(self.ip + 11 as usize)]) as usize; // relative address of target variable in VM memory
@@ -1461,35 +1467,35 @@ impl VM {
             RegTypes::uint64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 self.registers[dest_reg_ind as usize] =
-                    args_to_u64(&self.memory[(abs_addr)..(abs_addr + 8)]);
+                    Register::uint(args_to_u64(&self.memory[(abs_addr)..(abs_addr + 8)]));
                 self.reg_types[dest_reg_ind as usize] = RegTypes::uint64;
                 //println!("DBG start addr: {}", abs_addr + 2);
             }
             RegTypes::int64 => {
                 let res: i64 = args_to_i64(&self.memory[(abs_addr)..(abs_addr + 8)]);
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = res as u64;
+                self.registers[dest_reg_ind as usize] = Register::int(res);
                 self.reg_types[dest_reg_ind as usize] = RegTypes::int64;
             }
             RegTypes::float64 => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
                 let res: f64 = args_to_f64(&self.memory[(abs_addr)..(abs_addr + 8)]);
-                self.registers[dest_reg_ind as usize] = res.to_bits();
+                self.registers[dest_reg_ind as usize] = Register::float(res);
                 self.reg_types[dest_reg_ind as usize] = RegTypes::float64;
             }
             RegTypes::StrAddr => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = abs_addr as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = Register::StrAddr(abs_addr as u64); // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::StrAddr;
             }
             RegTypes::address => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = Register::address(abs_addr as u64); // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::address;
             }
             RegTypes::ds_addr => {
                 let dest_reg_ind: u8 = self.memory[(self.ip + 1) as usize];
-                self.registers[dest_reg_ind as usize] = (abs_addr) as u64; // +1 for type, +8 for length
+                self.registers[dest_reg_ind as usize] = Register::ds_addr(abs_addr as u64); // +1 for type, +8 for length
                 self.reg_types[dest_reg_ind as usize] = RegTypes::ds_addr;
             }
         }
@@ -1517,19 +1523,19 @@ impl VM {
         // type, +1 for var size
         match self.reg_types[r_src_ind] {
             RegTypes::uint64 | RegTypes::StrAddr | RegTypes::address | RegTypes::ds_addr => {
-                let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
+                let val: [u8; 8] = self.registers[r_src_ind].as_u64().to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
             }
             RegTypes::int64 => {
-                let val: [u8; 8] = (self.registers[r_src_ind] as i64).to_be_bytes();
+                let val: [u8; 8] = self.registers[r_src_ind].as_i64().to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
             }
             RegTypes::float64 => {
-                let val: [u8; 8] = (self.registers[r_src_ind] as f64).to_be_bytes();
+                let val: [u8; 8] = (self.registers[r_src_ind].as_f64()).to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
@@ -1548,7 +1554,8 @@ impl VM {
         let offset = self.registers[r_offset_ind];
         let rel_addr: usize = args_to_u64(&self.memory[(self.ip + 3)..(self.ip + 11)]) as usize;
 
-        let abs_addr: usize = (self.data_base as usize) + rel_addr + (offset as usize) + 1 + 8; // +1 for var
+        let abs_addr: usize =
+            (self.data_base as usize) + rel_addr + (offset.as_u64() as usize) + 1 + 8; // +1 for var
         // type, +1 for var size
         if (self.memory[self.data_base as usize + rel_addr] & CONST_MASK) != 0 {
             panic!(
@@ -1558,19 +1565,19 @@ impl VM {
         }
         match self.reg_types[r_src_ind] {
             RegTypes::uint64 | RegTypes::StrAddr | RegTypes::address | RegTypes::ds_addr => {
-                let val: [u8; 8] = self.registers[r_src_ind].to_be_bytes();
+                let val: [u8; 8] = self.registers[r_src_ind].as_u64().to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
             }
             RegTypes::int64 => {
-                let val: [u8; 8] = (self.registers[r_src_ind] as i64).to_be_bytes();
+                let val: [u8; 8] = self.registers[r_src_ind].as_i64().to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
             }
             RegTypes::float64 => {
-                let val: [u8; 8] = (self.registers[r_src_ind] as f64).to_be_bytes();
+                let val: [u8; 8] = self.registers[r_src_ind].as_f64().to_be_bytes();
                 for i in 0..8 {
                     self.memory[abs_addr + i] = val[i];
                 }
@@ -1590,7 +1597,7 @@ impl VM {
             args_to_u64(&self.memory[(self.ip + 10) as usize..(self.ip + 18) as usize]);
 
         let abs_addr: u64 = self.data_base + rel_addr + offset;
-        self.registers[r_dest_ind] = abs_addr;
+        self.registers[r_dest_ind] = Register::uint(abs_addr);
         self.reg_types[r_dest_ind] = RegTypes::ds_addr;
 
         self.ip += 18;
@@ -1604,12 +1611,9 @@ impl VM {
         let offset: usize =
             args_to_u64(&self.memory[(self.ip + 3) as usize..(self.ip + 11) as usize]) as usize;
 
-        let src_val = self.registers[r_src_ind] as usize;
+        let src_val = self.registers[r_src_ind].as_u64() as usize;
         let val_type = self.memory[src_val - offset];
         if val_type == 0x4 {
-            if let Err(e) = self.err_coredump() {
-                eprintln!("Error creating coredump: {}", e);
-            };
             panic!(
                 "CRITICAL: At Instruction {:#x}:\n String constant cannot be dereferenced. \nCoredump created.",
                 self.ip
@@ -1617,7 +1621,8 @@ impl VM {
         }
 
         let tgt_addr: usize = src_val - offset + 8 + 1; // 8 for length skip
-        self.registers[r_dest_ind] = args_to_u64(&self.memory[tgt_addr..(tgt_addr + 8)]);
+        self.registers[r_dest_ind] =
+            Register::uint(args_to_u64(&self.memory[tgt_addr..(tgt_addr + 8)]));
         self.reg_types[r_dest_ind] = match val_type {
             0x1 | 0x5 => RegTypes::uint64,
             0x2 | 0x6 => RegTypes::int64,
@@ -1638,10 +1643,10 @@ impl VM {
         let r_offset_ind: usize = self.memory[self.ip + 2] as usize;
         let rel_addr: u64 =
             args_to_u64(&self.memory[(self.ip + 3) as usize..(self.ip + 11) as usize]);
-        let offset: u64 = self.registers[r_offset_ind];
+        let offset: u64 = self.registers[r_offset_ind].as_u64();
 
         let abs_addr: u64 = self.data_base + rel_addr + offset;
-        self.registers[r_dest_ind] = abs_addr;
+        self.registers[r_dest_ind] = Register::uint(abs_addr);
         self.reg_types[r_dest_ind] = RegTypes::ds_addr;
 
         self.ip += 11;
@@ -1654,9 +1659,9 @@ impl VM {
         let r_dest_ind: usize = self.memory[(self.ip + 2) as usize] as usize;
         let r_offset_ind: usize = self.memory[(self.ip + 3) as usize] as usize;
 
-        let offset: usize = self.registers[r_offset_ind] as usize;
+        let offset: usize = self.registers[r_offset_ind].as_u64() as usize;
 
-        let src_val = self.registers[r_src_ind] as usize;
+        let src_val = self.registers[r_src_ind].as_u64() as usize;
         let val_type = self.memory[src_val - offset];
         if val_type == 0x4 {
             if let Err(e) = self.err_coredump() {
@@ -1669,7 +1674,8 @@ impl VM {
         }
 
         let tgt_addr: usize = src_val - offset + 8 + 1; // 8 for length skip
-        self.registers[r_dest_ind] = args_to_u64(&self.memory[tgt_addr..(tgt_addr + 8)]);
+        self.registers[r_dest_ind] =
+            Register::uint(args_to_u64(&self.memory[tgt_addr..(tgt_addr + 8)]));
         self.reg_types[r_dest_ind] = match val_type {
             0x1 | 0x5 => RegTypes::uint64,
             0x2 | 0x6 => RegTypes::int64,
@@ -1694,26 +1700,15 @@ impl VM {
         // size: 4
         let src_r_num: u8 = self.memory[self.ip + 3];
         match self.reg_types[src_r_num as usize] {
-            RegTypes::uint64 => {
+            RegTypes::uint64
+            | RegTypes::int64
+            | RegTypes::float64
+            | RegTypes::address
+            | RegTypes::ds_addr => {
                 println!("{}", self.registers[src_r_num as usize]);
             }
-            RegTypes::int64 => {
-                println!("{}", self.registers[src_r_num as usize] as i64);
-            }
-            RegTypes::float64 => {
-                let val: f64 = f64::from_bits(self.registers[src_r_num as usize]);
-                println!("{}", format_float(val));
-            }
-            RegTypes::address => {
-                let val: u64 = self.registers[src_r_num as usize];
-                println!("vm heap memory address: {:#x}", val);
-            }
-            RegTypes::ds_addr => {
-                let val: u64 = self.registers[src_r_num as usize];
-                println!("vm data segment memory address: {:#x}", val);
-            }
             RegTypes::StrAddr => {
-                let abs_addr: u64 = self.registers[src_r_num as usize];
+                let abs_addr: u64 = self.registers[src_r_num as usize].as_u64();
                 let bytes_len = &self.memory[((abs_addr - 8) as usize)..((abs_addr) as usize)];
                 let size: u64 = u64::from_be_bytes(bytes_len.try_into().unwrap());
 

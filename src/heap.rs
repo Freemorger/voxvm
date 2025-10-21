@@ -8,6 +8,7 @@ use rand::Rng;
 // On free: free the block, merge freed block with other free blocks nearby
 use crate::{
     gc::GcObject,
+    registers::Register,
     vm::{RegTypes, VM, args_to_f64, args_to_i64, args_to_u64},
 };
 
@@ -252,7 +253,7 @@ pub fn op_alloc(vm: &mut VM) {
     };
     vm.gc.pin_object(GcObject::new(res));
 
-    vm.registers[r_dest_ind] = res;
+    vm.registers[r_dest_ind] = Register::address(res);
     vm.reg_types[r_dest_ind] = RegTypes::address;
 
     vm.ip += 10;
@@ -267,7 +268,7 @@ pub fn op_allocr(vm: &mut VM) {
     // The object goes to GC control
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
     let r_size_ind: usize = vm.memory[(vm.ip + 2)] as usize;
-    let size_bytes: u64 = vm.registers[r_size_ind];
+    let size_bytes: u64 = vm.registers[r_size_ind].as_u64();
 
     let res = match vm.heap.alloc(size_bytes as usize) {
         Some(addr) => addr,
@@ -279,7 +280,7 @@ pub fn op_allocr(vm: &mut VM) {
     };
     vm.gc.pin_object(GcObject::new(res));
 
-    vm.registers[r_dest_ind] = res;
+    vm.registers[r_dest_ind] = Register::address(res);
     vm.reg_types[r_dest_ind] = RegTypes::address;
 
     vm.ip += 3;
@@ -294,7 +295,7 @@ pub fn op_allocr_nogc(vm: &mut VM) {
     // The object is manually freed!
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
     let r_size_ind: usize = vm.memory[(vm.ip + 2)] as usize;
-    let size_bytes: u64 = vm.registers[r_size_ind];
+    let size_bytes: u64 = vm.registers[r_size_ind].as_u64();
 
     let res = match vm.heap.alloc(size_bytes as usize) {
         Some(addr) => addr,
@@ -305,7 +306,7 @@ pub fn op_allocr_nogc(vm: &mut VM) {
         }
     };
 
-    vm.registers[r_dest_ind] = res;
+    vm.registers[r_dest_ind] = Register::address(res);
     vm.reg_types[r_dest_ind] = RegTypes::address;
 
     vm.ip += 3;
@@ -319,7 +320,7 @@ pub fn op_free(vm: &mut VM) {
     let r_src_ind: usize = vm.memory[(vm.ip + 1)] as usize;
 
     let r_src_val = vm.registers[r_src_ind];
-    match vm.heap.free(r_src_val) {
+    match vm.heap.free(r_src_val.as_u64()) {
         Ok(()) => {}
         Err(()) => {
             vm.exceptions_active
@@ -339,9 +340,9 @@ pub fn op_store(vm: &mut VM) {
     let r_src_ind: usize = vm.memory[(vm.ip + 2)] as usize;
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
 
-    let val: u64 = vm.registers[r_src_ind];
+    let val: u64 = vm.registers[r_src_ind].as_u64_bitwise();
 
-    let ptr: u64 = vm.registers[r_dest_ind];
+    let ptr: u64 = vm.registers[r_dest_ind].as_u64();
     match vm.heap.write(ptr, val.to_be_bytes().to_vec()) {
         Ok(()) => {
             if (vm.reg_types[r_src_ind] == RegTypes::address) {
@@ -365,8 +366,8 @@ pub fn op_load(vm: &mut VM) {
     let r_dst_ind: usize = vm.memory[(vm.ip + 2)] as usize;
     let r_src_ind: usize = vm.memory[(vm.ip + 3)] as usize;
 
-    let type_ind: u64 = vm.registers[r_type_ind];
-    let addr: u64 = vm.registers[r_src_ind];
+    let type_ind: u64 = vm.registers[r_type_ind].as_u64();
+    let addr: u64 = vm.registers[r_src_ind].as_u64();
     let res_bytes: Vec<u8> = match vm.heap.read(addr, 8) {
         Ok(vec) => vec,
         Err(_) => {
@@ -381,7 +382,7 @@ pub fn op_load(vm: &mut VM) {
         val if (val == 1 || val == 4 || val == 8 || val == 9) => {
             // uint
             let res: u64 = args_to_u64(&res_bytes);
-            vm.registers[r_dst_ind] = res;
+            vm.registers[r_dst_ind] = Register::uint(res);
             vm.reg_types[r_dst_ind] = match val {
                 0x1 => RegTypes::uint64,
                 0x4 => RegTypes::StrAddr,
@@ -396,13 +397,13 @@ pub fn op_load(vm: &mut VM) {
         0x2 => {
             // int
             let res: i64 = args_to_i64(&res_bytes);
-            vm.registers[r_dst_ind] = res as u64;
+            vm.registers[r_dst_ind] = Register::int(res);
             vm.reg_types[r_dst_ind] = RegTypes::int64;
         }
         0x3 => {
             // float
             let res: f64 = args_to_f64(&res_bytes);
-            vm.registers[r_dst_ind] = res.to_bits();
+            vm.registers[r_dst_ind] = Register::float(res);
             vm.reg_types[r_dst_ind] = RegTypes::float64;
         }
         other => {

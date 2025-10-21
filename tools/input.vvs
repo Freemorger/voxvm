@@ -1,35 +1,23 @@
 section text
 .start
-    uload r2 3
-    uload r5 2
-
-    uload r3 1
-    uload r4 5
-    label exping
+    fload r1 2.0
+    fload r2 2.0
+    uload r3 0 ; counter
+    uload r4 15 ; max
+    uload r5 1 ; incr
+    label multing
         ucmp r3 r4
-        jg @exit1
+        jz @fin
 
-        upow r2 r5
-        #ncall 1 r2
+        fmul r1 r2
+        ncall 1 r1
 
-        uinc r3
-        jmp @exping
-
-    label exit1
-        uload r3 1
-
-    label sqrtloop
-          ucmp r3 r4
-          jg @fin
-
-          usqrt r2 r2
-          #ncall 1 r2
-
-          uinc r3
-          jmp @sqrtloop
+        uadd r3 r5
+        jmp @multing
 
 
     label fin
+    ncall 1 r1
     halt
 
 

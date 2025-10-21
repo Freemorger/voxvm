@@ -4,7 +4,7 @@
 - Powerful heap allocator with custom "Split/merge first-fit" strategy
 - Bytecode assembly
 - .vve (voxvm executable) file format
-- It's (comparably) fast :D   [10x faster than python in my tests, at least]
+- It's (comparably) fast :D   [10x faster than python 3.11 in my tests, at least]
 - full docs will be available ~once~ soon
 
 ## Usage:
@@ -36,5 +36,23 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
 | GC                    | [X]            |
 | better ffi            | [~]            |
 | soon more..           | []             |
+
+## Repository structure
+1. nconfigs/ - FFI examples
+2. src/ - source code files
+  - assembly.rs - voxvm assembly tool
+  - callstack.rs - the call stack implementation
+  - exceptions.rs - voxvm exceptions enum
+  - fileformats.rs - tooling for voxvm's fileformats .vvr, .vve
+  - func_ops.rs - function Instructions handlers
+  - gc.rs - the GC (garbage collector) implementation
+  - heap.rs - the heap implementation && Instructions handlers
+  - main.rs - entry point
+  - native.rs - FFI implementation
+  - stack.rs - data stack implementation && instr handlers
+  - tables.rs - default tables
+  - vm.rs - main VM implementation
+3. tools/ - currently used for .vvs (voxvm assembly) examples, the name is legacy
+4. docs/ - will be once...
 
 ## Instruction (not really) actual info table: https://docs.google.com/spreadsheets/d/1bpkqAGjcDWKBDQTO2B2RmPHxcuN5EIkYm-DKRgUFVq8
