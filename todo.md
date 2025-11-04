@@ -1,4 +1,4 @@
 todo:
-- finish native (+heap integration)
-- dlbc instr
-- registers refactor
+- some default ncalls
+- dlbc instr (?)
+- refactor (?)

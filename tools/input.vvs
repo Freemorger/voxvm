@@ -1,25 +1,7 @@
 section text
 .start
-    fload r1 2.0
-    fload r2 2.0
-    uload r3 0 ; counter
-    uload r4 15 ; max
-    uload r5 1 ; incr
-    label multing
-        ucmp r3 r4
-        jz @fin
-
-        fmul r1 r2
-        ncall 1 r1
-
-        uadd r3 r5
-        jmp @multing
-
-
-    label fin
-    ncall 1 r1
+    uload r1 2
+    uload r2 3
+    ncall 0x100 r1
+    ncall 1 r0
     halt
-
-
-section data
-    n int 1

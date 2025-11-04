@@ -6,4 +6,6 @@ pub enum Exception {
     HeapWriteFault,
     HeapReadFault,
     NegativeSqrt,
+    InvalidDataType,
+    NativeFault,
 }

@@ -7,11 +7,12 @@ use crate::{
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
     gc::GC,
     heap::{Heap, op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store},
-    native::NativeService,
+    native::{NativeService, VMValue},
     registers::Register,
     stack::{VMStack, op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf},
 };
 use core::panic;
+use std::convert::TryFrom;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Result,
@@ -19,6 +20,8 @@ use std::{
     io::Write,
     time::Instant,
 };
+
+pub const RegistersCount: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u64)]
@@ -33,8 +36,8 @@ pub enum RegTypes {
 
 #[derive(Debug)]
 pub struct VM {
-    pub registers: [Register; 32],
-    pub reg_types: [RegTypes; 32],
+    pub registers: [Register; RegistersCount],
+    pub reg_types: [RegTypes; RegistersCount],
     flags: [u8; 4], // of, zf, nf, cf
     pub ip: usize,
     pub memory: Vec<u8>, // dividing by each bytes, then can be grouped
@@ -309,12 +312,40 @@ impl VM {
     }
 
     fn op_ncall(&mut self) {
-        // 0x1, size: different
+        // 0x1, size: 4
         let ncall_num: u16 = args_to_u16(&self.memory[(self.ip + 1)..(self.ip + 3)]);
         match ncall_num {
-            0x1 => self.ncall_println(),
-            other => {} //self.nativesys.call_code(other),
+            0x1 => {
+                self.ncall_println();
+                return;
+            }
+            other => {
+                let res = self.nativesys.call_code(
+                    other,
+                    &CollectRegsVMVal(&self.registers),
+                    RegistersCount as u32,
+                );
+                match res {
+                    Ok(v) => {
+                        //self.registers[0] = v.data;
+                        self.reg_types[0] = match RegTFromU32(v.typeind) {
+                            Some(v) => v,
+                            None => {
+                                self.exceptions_active.push(Exception::InvalidDataType);
+                                return;
+                            }
+                        };
+                        self.registers[0] = Register::from_u64_bits(v.data, self.reg_types[0]);
+                    }
+                    Err(e) => {
+                        eprintln!("{:#?}", e);
+                        self.exceptions_active.push(Exception::NativeFault);
+                    }
+                }
+            }
         }
+        self.ip += 4;
+        return;
     }
 
     fn op_nop(&mut self) {
@@ -1813,6 +1844,59 @@ pub fn clone_placed_64(toclone: &Vec<u64>) -> Vec<u64> {
     let mut res: Vec<u64> = Vec::new();
     for i in 0..toclone.len() {
         res.push(toclone[i].clone());
+    }
+    res
+}
+
+pub fn reg_into_vmval(reg: Register) -> VMValue {
+    match reg {
+        Register::uint(v) => VMValue {
+            typeind: RegTypes::uint64 as u32,
+            data: v,
+        },
+        Register::int(v) => VMValue {
+            typeind: RegTypes::int64 as u32,
+            data: reg.as_u64(),
+        },
+        Register::float(v) => VMValue {
+            typeind: RegTypes::float64 as u32,
+            data: reg.as_u64(),
+        },
+        Register::StrAddr(v) => VMValue {
+            typeind: RegTypes::StrAddr as u32,
+            data: reg.as_u64(),
+        },
+        Register::address(v) => VMValue {
+            typeind: RegTypes::address as u32,
+            data: reg.as_u64(),
+        },
+        Register::ds_addr(v) => VMValue {
+            typeind: RegTypes::ds_addr as u32,
+            data: reg.as_u64(),
+        },
+    }
+}
+
+// rust's TryFrom is dumb
+pub fn RegTFromU32(u: u32) -> Option<RegTypes> {
+    match u {
+        1 => Some(RegTypes::uint64),
+        2 => Some(RegTypes::int64),
+        3 => Some(RegTypes::float64),
+        4 => Some(RegTypes::StrAddr),
+        8 => Some(RegTypes::address),
+        9 => Some(RegTypes::ds_addr),
+        _ => None,
+    }
+}
+
+pub fn CollectRegsVMVal(regs: &[Register]) -> [VMValue; RegistersCount] {
+    let mut res = [VMValue {
+        data: 0,
+        typeind: 0,
+    }; RegistersCount];
+    for (i, v) in regs.iter().enumerate() {
+        res[i] = reg_into_vmval(*v);
     }
     res
 }

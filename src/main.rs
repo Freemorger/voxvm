@@ -1,4 +1,4 @@
-use std::{env, fs::File, io::Write, process::exit};
+use std::{env, fs::File, io::Write, process::exit, time::Instant};
 
 use assembly::VoxAssembly;
 use regex::Regex;
@@ -19,7 +19,7 @@ mod stack;
 mod vm;
 
 fn main() {
-    let mut sys = System::new_all();
+    let mut sys = System::new();
     sys.refresh_memory();
     let available_ram = sys.available_memory();
     let sysram_multiplier: f64 = 0.001f64;
@@ -182,7 +182,6 @@ fn main() {
             heap_size = Some(DEFAULT_INIT_HEAP);
         }
     }
-
     let mut vm_instance = VM::new(
         ram_size.unwrap(),
         stack_size.unwrap(),
@@ -221,6 +220,7 @@ fn main() {
     }
 
     vm_instance.run();
+
     if coredump_on_exit {
         let dump = vm_instance.coredump();
         let mut out_file = match File::create("voxvm.dump") {

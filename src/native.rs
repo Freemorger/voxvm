@@ -3,12 +3,13 @@ use std::{
     env,
     ffi::c_void,
     fs::{File, read_dir},
-    io::Error,
+    io,
 };
 
 use libloading::{Library, Symbol};
 use serde::Deserialize;
 
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct VMValue {
     pub typeind: u32,
@@ -20,7 +21,7 @@ type VMFFIFunction = unsafe extern "C" fn(args: *const VMValue, len: u32) -> VMV
 pub struct NativeService {
     libs: Vec<NativeLibrary>,
     platform: NSysOS,
-    ncall_codes: HashMap<u16, (usize, String)>, // value is (lib ind, funcname)
+    ncall_codes: HashMap<u16, (usize, NFuncCfg)>, // value is (lib ind, funcname)
 }
 
 impl NativeService {
@@ -66,7 +67,7 @@ impl NativeService {
                 Some(ref v) => {
                     for key in v {
                         self.ncall_codes
-                            .insert(*key.1, (self.libs.len(), key.0.clone()));
+                            .insert(key.1.ncall_code, (self.libs.len(), key.1.clone()));
                     }
                 }
                 None => {}
@@ -118,26 +119,42 @@ impl NativeService {
         Ok(())
     }
 
-    pub fn call_code(&mut self, call_code: u16, args: &[VMValue], argc: u32) -> Result<u64, ()> {
+    pub fn call_code(
+        &mut self,
+        call_code: u16,
+        args: &[VMValue],
+        argc: u32,
+    ) -> Result<VMValue, NSysError> {
         let funcdat = match self.ncall_codes.get(&call_code) {
             Some(v) => v,
             None => {
-                eprintln!("No such opcode!");
-                return Err(());
+                eprintln!("No such callcode!");
+                return Err(NSysError::InvalidCallCode(call_code));
             }
         };
 
         let lib: &mut NativeLibrary = match self.libs.get_mut(funcdat.0) {
             Some(v) => v,
             None => {
-                return Err(());
+                return Err(NSysError::NoLibrary());
             }
         };
-        let name = funcdat.1.clone();
+        let f = funcdat.1.clone();
 
-        lib.call_foo(name, args, argc);
+        if (args.len() <= f.argc) {
+            eprintln!("Invalid args!");
+            return Err(NSysError::InvalidArgs());
+        }
+        let res = lib.call_foo(f.name, &args[1..f.argc], f.argc as u32); // r0 is for res
 
-        Ok(0)
+        match res {
+            Ok(v) => {
+                return Ok(v);
+            }
+            Err(e) => {
+                return Err(NSysError::Libloading(e));
+            }
+        }
     }
 
     fn loadname(&mut self, filename: &str, cfg: NSysCfg) -> Result<(), String> {
@@ -153,6 +170,16 @@ impl NativeService {
     }
 }
 
+#[derive(Debug)]
+pub enum NSysError {
+    Libloading(libloading::Error),
+    fs(io::Error),
+    InvalidCallCode(u16),
+    NoLibrary(),
+    InvalidArgs(),
+    Other(String),
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct NSysCfg {
     name: String,
@@ -162,7 +189,14 @@ pub struct NSysCfg {
     lib_filename_macos: Option<String>,
     lib_filename_win: Option<String>,
 
-    functions: Option<HashMap<String, u16>>,
+    functions: Option<HashMap<String, NFuncCfg>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct NFuncCfg {
+    name: String,
+    ncall_code: u16,
+    argc: usize,
 }
 
 #[derive(Debug)]

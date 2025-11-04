@@ -448,19 +448,21 @@ impl VoxAssembly {
                 let unsigned_res: u64;
                 let mut num_sys: u32 = 10;
                 let mut bytes_limit: usize = 8;
+                let mut arg_cleansed = arg.to_lowercase().clone();
 
                 if opcode == 0x1 {
                     bytes_limit = 2;
                 }
-                if arg.to_lowercase().contains("0x") {
+                if arg.to_lowercase().starts_with("0x") {
                     num_sys = 16;
+                    arg_cleansed = arg_cleansed.strip_prefix("0x").unwrap().to_string();
                 }
 
                 if is_signed {
-                    signed_res = i64::from_str_radix(arg, num_sys).unwrap();
+                    signed_res = i64::from_str_radix(&arg_cleansed, num_sys).unwrap();
                     res = signed_res.to_be_bytes();
                 } else {
-                    unsigned_res = u64::from_str_radix(arg, num_sys).unwrap();
+                    unsigned_res = u64::from_str_radix(&arg_cleansed, num_sys).unwrap();
                     res = unsigned_res.to_be_bytes();
                 }
                 self.bin_buffer
@@ -731,6 +733,8 @@ fn get_exc_table() -> HashMap<String, u64> {
         "heap_write_fault".to_string() => 0x4,
         "heap_read_fault".to_string() => 0x5,
         "negative_sqrt".to_string() => 0x6,
+        "invaliddatatype".to_string() => 0x7,
+        "nativefault".to_string() => 0x8,
     }
 }
 

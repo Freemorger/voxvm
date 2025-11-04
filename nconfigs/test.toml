@@ -2,5 +2,12 @@ name = "test_lib"
 lib_filename_linux = "nconfigs/libs/libtestfr.so"
 version = "1.0.0"
 
-[functions]
-unsigned_add = 0x100
+[functions.unsigned_add]
+name = "unsigned_add"
+ncall_code = 0x100
+argc = 2
+
+[functions.unsigned_pow2]
+name = "unsigned_pow2"
+ncall_code = 0x101
+argc = 1
