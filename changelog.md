@@ -9,4 +9,7 @@ pre3:
 pre4:
 - better ffi config
 - some stuff i forgot
+pre5:
+- default ncalls wip
+- print works
 todo: todo.md
