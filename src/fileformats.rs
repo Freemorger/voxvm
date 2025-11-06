@@ -4,7 +4,7 @@ use std::{
     fs::{self, File},
 };
 
-use crate::vm::args_to_u64;
+use crate::misclib::args_to_u64;
 
 #[derive(Debug)]
 pub struct VoxExeHeader {

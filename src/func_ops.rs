@@ -1,6 +1,7 @@
 use crate::{
+    misclib::args_to_u64,
     registers::Register,
-    vm::{RegTypes, VM, args_to_u64},
+    vm::{RegTypes, VM},
 };
 
 pub fn op_call(vm: &mut VM) {

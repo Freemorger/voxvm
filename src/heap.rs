@@ -8,8 +8,9 @@ use rand::Rng;
 // On free: free the block, merge freed block with other free blocks nearby
 use crate::{
     gc::GcObject,
+    misclib::{args_to_f64, args_to_i64, args_to_u64},
     registers::Register,
-    vm::{RegTypes, VM, args_to_f64, args_to_i64, args_to_u64},
+    vm::{RegTypes, VM},
 };
 
 #[derive(Debug)]

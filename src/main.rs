@@ -15,6 +15,8 @@ mod heap;
 mod native;
 #[macro_use]
 mod registers;
+mod defnative;
+mod misclib;
 mod stack;
 mod vm;
 

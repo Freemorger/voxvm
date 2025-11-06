@@ -2,11 +2,13 @@
 
 use crate::{
     callstack::CallStack,
+    defnative,
     exceptions::Exception,
     fileformats::VoxExeHeader,
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
     gc::GC,
     heap::{Heap, op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store},
+    misclib::*,
     native::{NativeService, VMValue},
     registers::Register,
     stack::{VMStack, op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf},
@@ -314,17 +316,13 @@ impl VM {
     fn op_ncall(&mut self) {
         // 0x1, size: 4
         let ncall_num: u16 = args_to_u16(&self.memory[(self.ip + 1)..(self.ip + 3)]);
+        let args = &CollectRegsVMVal(&self.registers);
         match ncall_num {
             0x1 => {
-                self.ncall_println();
-                return;
+                defnative::ncall_print(self);
             }
             other => {
-                let res = self.nativesys.call_code(
-                    other,
-                    &CollectRegsVMVal(&self.registers),
-                    RegistersCount as u32,
-                );
+                let res = self.nativesys.call_code(other, args);
                 match res {
                     Ok(v) => {
                         //self.registers[0] = v.data;
@@ -1739,21 +1737,15 @@ impl VM {
                 println!("{}", self.registers[src_r_num as usize]);
             }
             RegTypes::StrAddr => {
-                let abs_addr: u64 = self.registers[src_r_num as usize].as_u64();
-                let bytes_len = &self.memory[((abs_addr - 8) as usize)..((abs_addr) as usize)];
-                let size: u64 = u64::from_be_bytes(bytes_len.try_into().unwrap());
-
-                let bytes_str = &self.memory[(abs_addr as usize)..((abs_addr + size) as usize)];
-                let utf16_data = u8_slice_to_u16_vec(bytes_str);
-
-                let res_str: String = match String::from_utf16(&utf16_data) {
-                    Ok(val) => val,
-                    Err(err) => panic!(
-                        "CRITICAL: While converting into utf8 printable string: {}",
-                        err
-                    ),
-                };
-                println!("{}", res_str);
+                let res_st: String =
+                    match string_from_straddr(self, self.registers[src_r_num as usize].as_u64()) {
+                        Some(v) => v,
+                        None => {
+                            eprintln!("ERROR: no res string!");
+                            return;
+                        }
+                    };
+                println!("{}", res_st);
             }
         }
         self.ip += 4;
@@ -1787,116 +1779,4 @@ impl VM {
         };
         Ok(())
     }
-}
-
-pub fn args_to_u64(args: &[u8]) -> u64 {
-    let bytes: [u8; 8] = args.try_into().expect(&format!("Bytes convertion error!"));
-    let value: u64 = u64::from_be_bytes(bytes);
-    value
-}
-
-pub fn args_to_u16(args: &[u8]) -> u16 {
-    let bytes: [u8; 2] = args.try_into().expect(&format!("Bytes convertion error!"));
-    let value: u16 = u16::from_be_bytes(bytes);
-    value
-}
-
-pub fn args_to_i64(args: &[u8]) -> i64 {
-    let bytes: [u8; 8] = args.try_into().expect(&format!("Bytes convertion error!"));
-    let value: i64 = i64::from_be_bytes(bytes);
-    value
-}
-
-pub fn args_to_f64(args: &[u8]) -> f64 {
-    let bytes: [u8; 8] = args
-        .try_into()
-        .expect(&format!("Bytes convertion error into f64!"));
-    let value: f64 = f64::from_be_bytes(bytes);
-    value
-}
-
-pub fn format_float(value: f64) -> String {
-    let s = format!("{:.11}", value);
-    let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s.is_empty() {
-        "0".to_string()
-    } else {
-        s.to_string()
-    }
-}
-
-pub fn u8_slice_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
-    bytes
-        .chunks(2)
-        .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
-        .collect()
-}
-
-pub fn clone_placed(toclone: &Vec<u8>) -> Vec<u8> {
-    let mut res: Vec<u8> = Vec::new();
-    for i in 0..toclone.len() {
-        res.push(toclone[i].clone());
-    }
-    res
-}
-
-pub fn clone_placed_64(toclone: &Vec<u64>) -> Vec<u64> {
-    let mut res: Vec<u64> = Vec::new();
-    for i in 0..toclone.len() {
-        res.push(toclone[i].clone());
-    }
-    res
-}
-
-pub fn reg_into_vmval(reg: Register) -> VMValue {
-    match reg {
-        Register::uint(v) => VMValue {
-            typeind: RegTypes::uint64 as u32,
-            data: v,
-        },
-        Register::int(v) => VMValue {
-            typeind: RegTypes::int64 as u32,
-            data: reg.as_u64(),
-        },
-        Register::float(v) => VMValue {
-            typeind: RegTypes::float64 as u32,
-            data: reg.as_u64(),
-        },
-        Register::StrAddr(v) => VMValue {
-            typeind: RegTypes::StrAddr as u32,
-            data: reg.as_u64(),
-        },
-        Register::address(v) => VMValue {
-            typeind: RegTypes::address as u32,
-            data: reg.as_u64(),
-        },
-        Register::ds_addr(v) => VMValue {
-            typeind: RegTypes::ds_addr as u32,
-            data: reg.as_u64(),
-        },
-    }
-}
-
-// rust's TryFrom is dumb
-pub fn RegTFromU32(u: u32) -> Option<RegTypes> {
-    match u {
-        1 => Some(RegTypes::uint64),
-        2 => Some(RegTypes::int64),
-        3 => Some(RegTypes::float64),
-        4 => Some(RegTypes::StrAddr),
-        8 => Some(RegTypes::address),
-        9 => Some(RegTypes::ds_addr),
-        _ => None,
-    }
-}
-
-pub fn CollectRegsVMVal(regs: &[Register]) -> [VMValue; RegistersCount] {
-    let mut res = [VMValue {
-        data: 0,
-        typeind: 0,
-    }; RegistersCount];
-    for (i, v) in regs.iter().enumerate() {
-        res[i] = reg_into_vmval(*v);
-    }
-    res
 }

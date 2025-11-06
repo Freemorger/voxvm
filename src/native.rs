@@ -119,12 +119,7 @@ impl NativeService {
         Ok(())
     }
 
-    pub fn call_code(
-        &mut self,
-        call_code: u16,
-        args: &[VMValue],
-        argc: u32,
-    ) -> Result<VMValue, NSysError> {
+    pub fn call_code(&mut self, call_code: u16, args: &[VMValue]) -> Result<VMValue, NSysError> {
         let funcdat = match self.ncall_codes.get(&call_code) {
             Some(v) => v,
             None => {
