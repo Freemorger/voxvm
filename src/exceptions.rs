@@ -8,4 +8,5 @@ pub enum Exception {
     NegativeSqrt,
     InvalidDataType,
     NativeFault,
+    IncorrectRegType,
 }

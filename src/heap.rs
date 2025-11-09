@@ -8,7 +8,7 @@ use rand::Rng;
 // On free: free the block, merge freed block with other free blocks nearby
 use crate::{
     gc::GcObject,
-    misclib::{args_to_f64, args_to_i64, args_to_u64},
+    misclib::{args_to_f64, args_to_i64, args_to_u64, pad_to, RegTFromU32},
     registers::Register,
     vm::{RegTypes, VM},
 };
@@ -172,6 +172,30 @@ impl Heap {
         }
         Err(())
     }
+        
+    pub fn copy(&mut self, from_st: usize, from_end: usize, 
+                to_ptr: usize) 
+        -> Result<(), HeapError> {
+            
+            if !self.allocated.iter().any(|b| {
+                b.is_in_bounds(from_st, from_end)
+            }) {
+                return Err(HeapError::Segmentation);
+            }
+            let count: usize = from_end - from_st;
+            if (!self.allocated.iter().any(|b| {
+                b.is_in_bounds(to_ptr, to_ptr + count)
+            })) {
+                return Err(HeapError::Segmentation);
+            }
+            
+            for i in 0..(count + 1) {
+                self.heap[(to_ptr + i) as usize] = 
+                    self.heap[(from_st + i) as usize];
+            }
+
+        Ok(())
+    }
 
     // for tests
     pub fn stress_heap(&mut self) {
@@ -208,6 +232,11 @@ impl Heap {
 }
 
 #[derive(Debug)]
+pub enum HeapError {
+    Segmentation,
+}
+
+#[derive(Debug)]
 pub struct HeapBlock {
     pub start_byte: usize,
     pub last_byte: usize,
@@ -216,7 +245,7 @@ pub struct HeapBlock {
 
 impl HeapBlock {
     pub fn new(start: usize, end: usize) -> HeapBlock {
-        if (end < start) {
+        if end < start {
             panic!("While creating new heap block: end byte < start byte!")
         }
         HeapBlock {
@@ -232,6 +261,12 @@ impl HeapBlock {
         self.start_byte = start;
         self.last_byte = end;
         self.size = end - start;
+    }
+
+    pub fn is_in_bounds(&self, start: usize, end: usize) 
+        -> bool {
+        return (start >= self.start_byte) && 
+            (end <= self.last_byte)
     }
 }
 
@@ -334,17 +369,21 @@ pub fn op_free(vm: &mut VM) {
 }
 
 pub fn op_store(vm: &mut VM) {
-    // 0xA2, size: 3
-    // store Rdest Rsrc
+    // 0xA2, size: 4
+    let instr_size: usize = 4;
+    // store Rdest Rsrc Rcount
     // stores Rsrc val in heap addr.
     // No metadata, so Type safety on dev!
     let r_src_ind: usize = vm.memory[(vm.ip + 2)] as usize;
     let r_dest_ind: usize = vm.memory[(vm.ip + 1)] as usize;
+    let r_count_ind: usize = vm.memory[(vm.ip + 3)] as usize;
 
     let val: u64 = vm.registers[r_src_ind].as_u64_bitwise();
+    let count: usize = (vm.registers[r_count_ind].as_u64() as usize).clamp(1, 7);
 
     let ptr: u64 = vm.registers[r_dest_ind].as_u64();
-    match vm.heap.write(ptr, val.to_be_bytes().to_vec()) {
+    let write_vec = val.to_be_bytes();
+    match vm.heap.write(ptr, write_vec[0..count].to_vec()) {
         Ok(()) => {
             if (vm.reg_types[r_src_ind] == RegTypes::address) {
                 vm.heap.saved_refs.entry(ptr).or_default().insert(val);
@@ -356,28 +395,33 @@ pub fn op_store(vm: &mut VM) {
         }
     }
 
-    vm.ip += 3;
-    return;
+    vm.ip += instr_size;
 }
 
 pub fn op_load(vm: &mut VM) {
-    // 0xA4, size: 4
-    // load rtype rdst rsrc
+    // 0xA4, size: 5
+    let instr_size: usize = 5;
+    // load rtype rdst rsrc rcount
+    // rcount is bytes count to load.
+    // the count range is clamped in [1..8]
     let r_type_ind: usize = vm.memory[(vm.ip + 1)] as usize;
     let r_dst_ind: usize = vm.memory[(vm.ip + 2)] as usize;
     let r_src_ind: usize = vm.memory[(vm.ip + 3)] as usize;
+    let r_count_ind: usize = vm.memory[(vm.ip + 4)] as usize;
 
     let type_ind: u64 = vm.registers[r_type_ind].as_u64();
     let addr: u64 = vm.registers[r_src_ind].as_u64();
-    let res_bytes: Vec<u8> = match vm.heap.read(addr, 8) {
+    let count: u64 = vm.registers[r_count_ind].as_u64().clamp(1, 8);
+    let mut res_bytes: Vec<u8> = match vm.heap.read(addr, count) {
         Ok(vec) => vec,
         Err(_) => {
             vm.exceptions_active
                 .push(crate::exceptions::Exception::HeapReadFault);
-            vm.ip += 4;
+            vm.ip += instr_size;
             return;
         }
     };
+    res_bytes = pad_to(res_bytes, 8);
 
     match type_ind {
         val if (val == 1 || val == 4 || val == 8 || val == 9) => {
@@ -415,6 +459,5 @@ pub fn op_load(vm: &mut VM) {
         }
     }
 
-    vm.ip += 4;
-    return;
+    vm.ip += instr_size;
 }

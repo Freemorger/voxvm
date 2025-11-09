@@ -1,20 +1,23 @@
 section text
 .start
-    alloc r4 8
-    uload r5 0x0076006F00780076 # "VOXV"
-    store r4 r5
+    alloc r1 8 
+    push r1
+
+    uload r2 0x103
+    uload r4 52
+    shl r2 r4 ; 259 << 55
+    uload r3 2 ; rcount
+    store r1 r2 r3
+
+    uload r2 1
+    load r2 r4 r1 r3
+    uload r2 4
+    shr r4 r2
 
     movr r1 r4
     uload r2 1
-    uload r3 8
+    uload r3 0
     ncall 1 r0
 
-    xor r3 r3
-
-    dsload r1 msg 0
-    ncall 1 r0
 
     halt
-
-section data
-    msg str "hello user"

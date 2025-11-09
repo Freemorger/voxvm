@@ -30,6 +30,14 @@ pub fn args_to_f64(args: &[u8]) -> f64 {
     value
 }
 
+pub fn pad_to(bytes: Vec<u8>, tgt_size: usize) -> Vec<u8> {
+    let mut res = bytes;
+    while res.len() < tgt_size {
+        res.insert(0, 0);
+    }
+    res
+}
+
 pub fn u8_slice_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
     bytes
         .chunks(2)

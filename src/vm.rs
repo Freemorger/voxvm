@@ -7,11 +7,11 @@ use crate::{
     fileformats::VoxExeHeader,
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
     gc::GC,
-    heap::{Heap, op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store},
+    heap::{op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store, Heap},
     misclib::*,
     native::{NativeService, VMValue},
-    registers::Register,
-    stack::{VMStack, op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf},
+    registers::{self, Register},
+    stack::{op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf, VMStack},
 };
 use core::panic;
 use std::convert::TryFrom;
@@ -233,6 +233,8 @@ impl VM {
         handlers[0x64] = Self::op_xor as InstructionHandler;
         handlers[0x65] = Self::op_test as InstructionHandler;
         handlers[0x66] = Self::op_lnot as InstructionHandler;
+        handlers[0x67] = Self::op_shl as InstructionHandler;
+        handlers[0x68] = Self::op_shr as InstructionHandler;
         handlers[0x70] = Self::op_dsload as InstructionHandler;
         handlers[0x71] = Self::op_dsrload as InstructionHandler;
         handlers[0x72] = Self::op_dssave as InstructionHandler;
@@ -1184,7 +1186,7 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: f64 = self.registers[r_src_ind as usize].as_u64() as f64;
+        let res_val: f64 = f64::from_bits(self.registers[r_src_ind as usize].as_u64());
 
         self.registers[r_dest_ind as usize] = Register::float(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::float64;
@@ -1214,7 +1216,7 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: u64 = self.registers[r_src_ind as usize].as_f64() as u64;
+        let res_val: u64 = self.registers[r_src_ind as usize].as_u64_bitwise();
 
         self.registers[r_dest_ind as usize] = Register::uint(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::uint64;
@@ -1399,6 +1401,38 @@ impl VM {
         return;
     }
 
+    fn op_shl(&mut self) {
+        // 0x67, size: 3
+        let instr_size: usize = 3;
+        // shl rdst rsrc
+        // rdst << rsrc
+        let rdst_ind: usize = self.memory[(self.ip + 1)] as usize;
+        let rsrc_ind: usize = self.memory[(self.ip + 2)] as usize;
+
+        let dst_reg = self.registers[rdst_ind];
+        let src_reg = self.registers[rsrc_ind];
+
+        self.registers[rdst_ind] = dst_reg << src_reg;
+
+        self.ip += instr_size;
+    }
+
+    fn op_shr(&mut self) {
+        // 0x68, size: 3
+        let instr_size: usize = 3;
+        // shr rdst rsrc
+        // rdst >> rsrc
+        let rdst_ind: usize = self.memory[(self.ip + 1)] as usize;
+        let rsrc_ind: usize = self.memory[(self.ip + 2)] as usize;
+
+        let dst_reg = self.registers[rdst_ind];
+        let src_reg = self.registers[rsrc_ind];
+
+        self.registers[rdst_ind] = dst_reg >> src_reg;
+
+        self.ip += instr_size;
+    }
+
     fn op_dsload(&mut self) {
         // 0x70, size: 18
         // dsload Rdest reladdr offset
@@ -1473,7 +1507,7 @@ impl VM {
         let offset: usize = (self.registers[self.memory[(self.ip + 2) as usize] as usize].as_u64()
             + 8
             + 1) as usize; // 8 for
-        // length skip
+                           // length skip
         let rel_addr: usize =
             args_to_u64(&self.memory[(self.ip + 3 as usize)..(self.ip + 11 as usize)]) as usize; // relative address of target variable in VM memory
         let abs_addr: usize = (self.data_base as usize) + rel_addr + offset;
@@ -1585,7 +1619,7 @@ impl VM {
 
         let abs_addr: usize =
             (self.data_base as usize) + rel_addr + (offset.as_u64() as usize) + 1 + 8; // +1 for var
-        // type, +1 for var size
+                                                                                       // type, +1 for var size
         if (self.memory[self.data_base as usize + rel_addr] & CONST_MASK) != 0 {
             panic!(
                 "CRITICAL: Attempting to write new value into DS constant at IP {}",

@@ -698,6 +698,8 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "xor".to_string() => vec![LexTypes::Op(0x64), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "test".to_string() => vec![LexTypes::Op(0x65), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "lnot".to_string() => vec![LexTypes::Op(0x66), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "shl".to_string() => vec![LexTypes::Op(0x67), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "shr".to_string() => vec![LexTypes::Op(0x68), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "dsload".to_string() => vec![LexTypes::Op(0x70), LexTypes::Size(18), LexTypes::Reg(0), LexTypes::Addr(0), LexTypes::Addr(0)],
         "dsrload".to_string() => vec![LexTypes::Op(0x71), LexTypes::Size(11), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Addr(0)],
         "dssave".to_string() => vec![LexTypes::Op(0x72), LexTypes::Size(18), LexTypes::Reg(0), LexTypes::Addr(0), LexTypes::Addr(0)],
@@ -718,9 +720,9 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "callr".to_string() => vec![LexTypes::Op(0x93), LexTypes::Size(2), LexTypes::Reg((0))],
         "alloc".to_string() => vec![LexTypes::Op(0xA0), LexTypes::Size(10), LexTypes::Reg((0)), LexTypes::Value((0))],
         "free".to_string() => vec![LexTypes::Op(0xA1), LexTypes::Size(2), LexTypes::Reg((0))],
-        "store".to_string() => vec![LexTypes::Op(0xA2), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "store".to_string() => vec![LexTypes::Op(0xA2), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
         "allocr".to_string() => vec![LexTypes::Op(0xA3), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
-        "load".to_string() => vec![LexTypes::Op(0xA4), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "load".to_string() => vec![LexTypes::Op(0xA4), LexTypes::Size(5), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
         "allocr_nogc".to_string() => vec![LexTypes::Op(0xA5), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
     }
 }
@@ -735,6 +737,7 @@ fn get_exc_table() -> HashMap<String, u64> {
         "negative_sqrt".to_string() => 0x6,
         "invaliddatatype".to_string() => 0x7,
         "nativefault".to_string() => 0x8,
+        "incorrectregtype".to_string() => 0x9,
     }
 }
 

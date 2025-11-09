@@ -26,6 +26,8 @@ impl PartialEq for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => a == b,
             (Register::address(a), Register::address(b)) => a == b,
             (Register::ds_addr(a), Register::ds_addr(b)) => a == b,
+            (Register::address(a), Register::uint(b)) => a == b,
+            (Register::uint(a), Register::address(b)) => a == b,
             _ => false,
         }
     }
@@ -40,6 +42,8 @@ impl PartialOrd for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => a.partial_cmp(b),
             (Register::address(a), Register::address(b)) => a.partial_cmp(b),
             (Register::ds_addr(a), Register::ds_addr(b)) => a.partial_cmp(b),
+            (Register::address(a), Register::uint(b)) => a.partial_cmp(b),
+            (Register::uint(a), Register::address(b)) => a.partial_cmp(b),
             _ => None,
         }
     }
@@ -56,6 +60,8 @@ impl Add for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a + b),
             (Register::address(a), Register::address(b)) => Register::address(a + b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a + b),
+            (Register::address(a), Register::uint(b)) => Register::address(a + b),
+            (Register::uint(a), Register::address(b)) => Register::address(a + b),
             _ => panic!(
                 "Cannot add different register types: {:?} + {:?}",
                 self, other
@@ -81,6 +87,8 @@ impl Sub for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a - b),
             (Register::address(a), Register::address(b)) => Register::address(a - b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a - b),
+            (Register::address(a), Register::uint(b)) => Register::address(a - b),
+            (Register::uint(a), Register::address(b)) => Register::uint(a - b),
             _ => panic!(
                 "Cannot subtract different register types: {:?} - {:?}",
                 self, other
@@ -106,6 +114,8 @@ impl Mul for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a * b),
             (Register::address(a), Register::address(b)) => Register::address(a * b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a * b),
+            (Register::address(a), Register::uint(b)) => Register::address(a * b),
+            (Register::uint(a), Register::address(b)) => Register::address(a * b),
             _ => panic!(
                 "Cannot multiply different register types: {:?} * {:?}",
                 self, other
@@ -131,6 +141,8 @@ impl Div for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a / b),
             (Register::address(a), Register::address(b)) => Register::address(a / b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a / b),
+            (Register::address(a), Register::uint(b)) => Register::address(a / b),
+            (Register::uint(a), Register::address(b)) => Register::uint(a / b),
             _ => panic!(
                 "Cannot divide different register types: {:?} / {:?}",
                 self, other
@@ -156,6 +168,8 @@ impl Rem for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a % b),
             (Register::address(a), Register::address(b)) => Register::address(a % b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a % b),
+            (Register::address(a), Register::uint(b)) => Register::address(a % b),
+            (Register::uint(a), Register::address(b)) => Register::uint(a % b),
             _ => panic!(
                 "Cannot modulo different register types: {:?} % {:?}",
                 self, other
@@ -180,6 +194,8 @@ impl BitAnd for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a & b),
             (Register::address(a), Register::address(b)) => Register::address(a & b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a & b),
+            (Register::address(a), Register::uint(b)) => Register::address(a & b),
+            (Register::uint(a), Register::address(b)) => Register::address(a & b),
             _ => panic!(
                 "Bitwise AND not supported for these types: {:?} & {:?}",
                 self, other
@@ -204,6 +220,8 @@ impl BitOr for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a | b),
             (Register::address(a), Register::address(b)) => Register::address(a | b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a | b),
+            (Register::address(a), Register::uint(b)) => Register::address(a | b),
+            (Register::uint(a), Register::address(b)) => Register::address(a | b),
             _ => panic!(
                 "Bitwise OR not supported for these types: {:?} | {:?}",
                 self, other
@@ -228,6 +246,8 @@ impl BitXor for Register {
             (Register::StrAddr(a), Register::StrAddr(b)) => Register::StrAddr(a ^ b),
             (Register::address(a), Register::address(b)) => Register::address(a ^ b),
             (Register::ds_addr(a), Register::ds_addr(b)) => Register::ds_addr(a ^ b),
+            (Register::address(a), Register::uint(b)) => Register::address(a ^ b),
+            (Register::uint(a), Register::address(b)) => Register::address(a ^ b),
             _ => panic!(
                 "Bitwise XOR not supported for these types: {:?} ^ {:?}",
                 self, other
@@ -252,6 +272,7 @@ impl Shl for Register {
             (Register::StrAddr(a), Register::uint(b)) => Register::StrAddr(a << b),
             (Register::address(a), Register::uint(b)) => Register::address(a << b),
             (Register::ds_addr(a), Register::uint(b)) => Register::ds_addr(a << b),
+            (Register::address(a), Register::uint(b)) => Register::address(a << b),
             _ => panic!(
                 "Shift left not supported for these types: {:?} << {:?}",
                 self, other
@@ -276,6 +297,7 @@ impl Shr for Register {
             (Register::StrAddr(a), Register::uint(b)) => Register::StrAddr(a >> b),
             (Register::address(a), Register::uint(b)) => Register::address(a >> b),
             (Register::ds_addr(a), Register::uint(b)) => Register::ds_addr(a >> b),
+            (Register::address(a), Register::uint(b)) => Register::address(a >> b),
             _ => panic!(
                 "Shift right not supported for these types: {:?} >> {:?}",
                 self, other
@@ -368,6 +390,17 @@ impl Register {
     pub fn as_f64(&self) -> f64 {
         match self {
             Register::uint(val) => *val as f64,
+            Register::int(val) => *val as f64,
+            Register::float(val) => *val,
+            Register::StrAddr(val) => *val as f64,
+            Register::address(val) => *val as f64,
+            Register::ds_addr(val) => *val as f64,
+        }
+    }
+
+    pub fn as_f64_bitwise(&self) -> f64 {
+        match self {
+            Register::uint(val) => f64::from_bits(*val),
             Register::int(val) => *val as f64,
             Register::float(val) => *val,
             Register::StrAddr(val) => *val as f64,

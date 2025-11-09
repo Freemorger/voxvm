@@ -9,7 +9,7 @@ pub fn ncall_print(vm: &mut VM) {
     // r1 is rsrc (any type), r2 is stream id (1 for stdout, 2 for stderr),
     // r3 is count bytes to print, if heap addr
     let rsrc: Register = vm.registers[1];
-    let stream_id: u64 = vm.registers[2].as_u64();
+    let stream_id: u64 = vm.registers[2].as_u64_bitwise();
 
     match rsrc {
         Register::uint(v) => {

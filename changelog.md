@@ -12,4 +12,8 @@ pre4:
 pre5:
 - default ncalls wip
 - print works
+pre6:
+- updated `store` and `load` instructions
+- new instructions: `shl`, `shr`
+- heap copy func
 todo: todo.md
