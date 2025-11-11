@@ -724,6 +724,7 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "allocr".to_string() => vec![LexTypes::Op(0xA3), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "load".to_string() => vec![LexTypes::Op(0xA4), LexTypes::Size(5), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
         "allocr_nogc".to_string() => vec![LexTypes::Op(0xA5), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "memcpy".to_string() => vec![LexTypes::Op(0xA6), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
     }
 }
 
@@ -738,6 +739,7 @@ fn get_exc_table() -> HashMap<String, u64> {
         "invaliddatatype".to_string() => 0x7,
         "nativefault".to_string() => 0x8,
         "incorrectregtype".to_string() => 0x9,
+        "heapsegmfault".to_string() => 10,
     }
 }
 

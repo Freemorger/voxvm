@@ -1,23 +1,28 @@
 section text
 .start
-    alloc r1 8 
-    push r1
+    alloc r1 4
+    alloc r2 4
+    
+    uload r3 0x0048004900000000 ; "HI" and zeros
+    uload r4 4
 
-    uload r2 0x103
-    uload r4 52
-    shl r2 r4 ; 259 << 55
-    uload r3 2 ; rcount
-    store r1 r2 r3
+    store r1 r3 r4
+    memcpy r2 r1 r4
 
-    uload r2 1
-    load r2 r4 r1 r3
-    uload r2 4
-    shr r4 r2
-
-    movr r1 r4
-    uload r2 1
-    uload r3 0
-    ncall 1 r0
-
+    call @print_4
+    movr r1 r2
+    call @print_4
 
     halt
+
+func print_4
+    push r2
+    push r3
+
+    uload r2 1
+    uload r3 4
+    ncall 1 r0
+
+    pop r3
+    pop r2
+    ret

@@ -7,7 +7,7 @@ use crate::{
     fileformats::VoxExeHeader,
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
     gc::GC,
-    heap::{op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_store, Heap},
+    heap::{op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_memcpy, op_store, Heap},
     misclib::*,
     native::{NativeService, VMValue},
     registers::{self, Register},
@@ -259,6 +259,7 @@ impl VM {
         handlers[0xA3] = op_allocr as InstructionHandler;
         handlers[0xA4] = op_load as InstructionHandler;
         handlers[0xA5] = op_allocr_nogc as InstructionHandler;
+        handlers[0xA6] = op_memcpy as InstructionHandler;
         // ...
         handlers
     };

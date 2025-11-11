@@ -165,8 +165,7 @@ impl Heap {
                         Some(v) => res.push(*v),
                         None => return Err(()),
                     }
-                }
-
+                } 
                 return Ok(res);
             }
         }
@@ -177,11 +176,20 @@ impl Heap {
                 to_ptr: usize) 
         -> Result<(), HeapError> {
             
-            if !self.allocated.iter().any(|b| {
-                b.is_in_bounds(from_st, from_end)
-            }) {
-                return Err(HeapError::Segmentation);
+            let mut found_start: Option<usize> = None;
+            for (idx, val) in self.allocated.iter().enumerate()             {
+                if val.is_in_bounds(from_st, from_end) {
+                    found_start = Some(val.start_byte);
+                    break;
+                }
             }
+            match found_start {
+                Some(_) => {},
+                None => {
+                    return Err(HeapError::Segmentation);
+                }
+            }
+
             let count: usize = from_end - from_st;
             if (!self.allocated.iter().any(|b| {
                 b.is_in_bounds(to_ptr, to_ptr + count)
@@ -189,12 +197,28 @@ impl Heap {
                 return Err(HeapError::Segmentation);
             }
             
-            for i in 0..(count + 1) {
-                self.heap[(to_ptr + i) as usize] = 
-                    self.heap[(from_st + i) as usize];
+            let to_end_idx = to_ptr + count.saturating_sub(1);
+            if self.heap.capacity() <= to_end_idx {
+                return Err(HeapError::Overflow);
             }
-
-        Ok(())
+            
+            match self.write(to_ptr as u64, self.heap[from_st..from_end].to_vec().clone()) {
+                Ok(()) => {},
+                Err(_) => {
+                    return Err(HeapError::Write);
+                }
+            }
+            
+            let mut refs_set: Option<HashSet<u64>> = None;
+            if let Some(v) = self.saved_refs
+                .get_mut(&(found_start.unwrap() as u64)) {
+                refs_set = Some(v.clone());
+                self.saved_refs.insert(found_start.unwrap() as u64,
+                    refs_set.unwrap());
+            }
+            
+            
+            Ok(())
     }
 
     // for tests
@@ -234,6 +258,8 @@ impl Heap {
 #[derive(Debug)]
 pub enum HeapError {
     Segmentation,
+    Overflow,
+    Write
 }
 
 #[derive(Debug)]
@@ -456,6 +482,35 @@ pub fn op_load(vm: &mut VM) {
                 "Type {} is incorrect for `load` instruction, at IP = {}",
                 other, vm.ip
             );
+        }
+    }
+
+    vm.ip += instr_size;
+}
+
+pub fn op_memcpy(vm: &mut VM) {
+    // 0xA6, size: 4
+    let instr_size: usize = 4;
+    // memcpy rDst rSrc rCount
+    
+    let rdst_ind: usize = vm.memory[(vm.ip + 1)] as usize;
+    let rsrc_ind: usize = vm.memory[(vm.ip + 2)] as usize;
+    let rcount_ind: usize = vm.memory[(vm.ip + 3)] as usize;
+
+    let dst_ptr: usize = vm.registers[rdst_ind]
+        .as_u64() as usize;
+    let src_ptr: usize = vm.registers[rsrc_ind]
+        .as_u64() as usize;
+    let count: usize = vm.registers[rcount_ind]
+        .as_u64() as usize;
+    let src_end: usize = src_ptr + count;
+    
+    match vm.heap.copy(src_ptr, src_end, dst_ptr) {
+        Ok(()) => {},
+        Err(e) => {
+            eprintln!("Error while copying at 0x{:x}:\n{:#?}",
+                vm.ip, e);
+            vm.exceptions_active.push(crate::exceptions::Exception::HeapSegmFault);
         }
     }
 

@@ -16,4 +16,7 @@ pre6:
 - updated `store` and `load` instructions
 - new instructions: `shl`, `shr`
 - heap copy func
+pre7: 
+- `memcpy` instruction 
+- tried to copy refs wit memcpy, not sure 
 todo: todo.md
