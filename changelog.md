@@ -19,4 +19,10 @@ pre6:
 pre7: 
 - `memcpy` instruction 
 - tried to copy refs wit memcpy, not sure 
+pre8: 
+- fixes
+- `storedat` instruction 
+- `dlbc` instruction (dynamically load bytecode)
+- `jmpr` instruction
+- finally a pathway to v8 release. i hope so.
 todo: todo.md

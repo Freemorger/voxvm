@@ -7,7 +7,7 @@ use crate::{
     fileformats::VoxExeHeader,
     func_ops::{op_call, op_callr, op_fnstind, op_ret},
     gc::GC,
-    heap::{op_alloc, op_allocr, op_allocr_nogc, op_free, op_load, op_memcpy, op_store, Heap},
+    heap::{op_alloc, op_allocr, op_allocr_nogc, op_dlbc, op_free, op_load, op_memcpy, op_store, op_storedat, Heap},
     misclib::*,
     native::{NativeService, VMValue},
     registers::{self, Register},
@@ -218,6 +218,7 @@ impl VM {
         handlers[0x44] = Self::op_jge as InstructionHandler;
         handlers[0x45] = Self::op_jle as InstructionHandler;
         handlers[0x46] = Self::op_jexc as InstructionHandler;
+        handlers[0x47] = Self::op_jmpr as InstructionHandler;
         handlers[0x50] = Self::op_utoi as InstructionHandler;
         handlers[0x51] = Self::op_itou as InstructionHandler;
         handlers[0x52] = Self::op_utof as InstructionHandler;
@@ -260,6 +261,8 @@ impl VM {
         handlers[0xA4] = op_load as InstructionHandler;
         handlers[0xA5] = op_allocr_nogc as InstructionHandler;
         handlers[0xA6] = op_memcpy as InstructionHandler;
+        handlers[0xA7] = op_storedat as InstructionHandler;
+        handlers[0xA8] = op_dlbc as InstructionHandler;
         // ...
         handlers
     };
@@ -1149,7 +1152,17 @@ impl VM {
         }
 
         self.ip += 17;
-        return;
+    }
+
+    fn op_jmpr(&mut self) {
+        // 0x47, size: 2 
+        let instr_size: usize = 2;
+        // jmpr rdst
+        // jumpes to addr in rdst
+        
+        let rdst_ind: usize = self.memory[self.ip + 1] as usize;
+        let addr = self.registers[rdst_ind].as_u64();
+        self.ip = addr as usize;
     }
 
     fn op_utoi(&mut self) {
@@ -1797,8 +1810,8 @@ impl VM {
         //     .flat_map(|num| num.to_be_bytes())
         //     .collect();
         // res.extend(&stack_u8_cl);
-        res.extend(&zeros);
-        res.extend(&(clone_placed(&self.heap.heap)));
+        //res.extend(&zeros);
+        //res.extend(&(clone_placed(&self.heap.heap)));
         res
     }
     fn err_coredump(&mut self) -> std::result::Result<(), String> {

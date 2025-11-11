@@ -683,6 +683,7 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "jge".to_string() => vec![LexTypes::Op(0x44), LexTypes::Size(9), LexTypes::Addr(0)],
         "jle".to_string() => vec![LexTypes::Op(0x45), LexTypes::Size(9), LexTypes::Addr(0)],
         "jexc".to_string() => vec![LexTypes::Op(0x46), LexTypes::Size(17), LexTypes::Exception((0)), LexTypes::Addr(0)],
+        "jmpr".to_string() => vec![LexTypes::Op(0x47), LexTypes::Size(2), LexTypes::Reg(0)],
         "utoi".to_string() => vec![LexTypes::Op(0x50), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "itou".to_string() => vec![LexTypes::Op(0x51), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "utof".to_string() => vec![LexTypes::Op(0x52), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
@@ -725,21 +726,24 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "load".to_string() => vec![LexTypes::Op(0xA4), LexTypes::Size(5), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
         "allocr_nogc".to_string() => vec![LexTypes::Op(0xA5), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "memcpy".to_string() => vec![LexTypes::Op(0xA6), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "storedat".to_string() => vec![LexTypes::Op(0xA7), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "dlbc".to_string() => vec![LexTypes::Op(0xA8), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
     }
 }
 
 fn get_exc_table() -> HashMap<String, u64> {
     hashmap! {
-        "zero_division".to_string() => 0x1,
-        "heap_allocation_fault".to_string() => 0x2,
-        "heap_free_fault".to_string() => 0x3,
-        "heap_write_fault".to_string() => 0x4,
-        "heap_read_fault".to_string() => 0x5,
-        "negative_sqrt".to_string() => 0x6,
-        "invaliddatatype".to_string() => 0x7,
-        "nativefault".to_string() => 0x8,
-        "incorrectregtype".to_string() => 0x9,
+        "zero_division".to_string() => 1,
+        "heap_allocation_fault".to_string() => 2,
+        "heap_free_fault".to_string() => 3,
+        "heap_write_fault".to_string() => 4,
+        "heap_read_fault".to_string() => 5,
+        "negative_sqrt".to_string() => 6,
+        "invaliddatatype".to_string() => 7,
+        "nativefault".to_string() => 8,
+        "incorrectregtype".to_string() => 9,
         "heapsegmfault".to_string() => 10,
+        "mainsegmfault".to_string() => 11,
     }
 }
 

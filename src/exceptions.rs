@@ -9,5 +9,6 @@ pub enum Exception {
     InvalidDataType,
     NativeFault,
     IncorrectRegType,
-    HeapSegmFault
+    HeapSegmFault,
+    MainSegmFault,
 }

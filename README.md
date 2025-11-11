@@ -55,4 +55,9 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
 3. tools/ - currently used for .vvs (voxvm assembly) examples, the name is legacy
 4. docs/ - will be once...
 
-## Instruction (not really) actual info table: https://docs.google.com/spreadsheets/d/1bpkqAGjcDWKBDQTO2B2RmPHxcuN5EIkYm-DKRgUFVq8
+## How to run
+`tools/input.vvs` contains a .vvs (voxvm assembly) program for latest version tests. You can run it (as well as any other .vvs program) like this:
+```bash
+./voxvm --vas=tools/input.vvs --vas-out=tools/program.vve
+./voxvm --vve=tools/program.vve 
+```

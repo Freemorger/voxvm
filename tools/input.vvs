@@ -1,28 +1,37 @@
 section text
 .start
-    alloc r1 4
-    alloc r2 4
+    alloc r1 28
+    dslea r2 msg 9
+    uload r3 26
+
+    storedat r1 r2 r3
+
+    call @print
+
+# now dlbc tests
     
-    uload r3 0x0048004900000000 ; "HI" and zeros
-    uload r4 4
+    uload r4 0x1905ff0000000000 ; uinc r5, halt
+    uload r6 4
 
-    store r1 r3 r4
-    memcpy r2 r1 r4
+    allocr r1 r6
+    store r1 r4 r6
+    dlbc r7 r1 r6
 
-    call @print_4
-    movr r1 r2
-    call @print_4
+    push r1
+    xor r3 r3
+    movr r1 r7
+    call @print ; printing addr we got from dlbc 
 
-    halt
+    jmpr r7 
 
-func print_4
+func print # r1 - data, r3 - heap count
     push r2
-    push r3
 
     uload r2 1
-    uload r3 4
     ncall 1 r0
 
-    pop r3
     pop r2
     ret
+
+section data
+    msg str "Hello, world!"

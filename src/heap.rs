@@ -202,7 +202,7 @@ impl Heap {
                 return Err(HeapError::Overflow);
             }
             
-            match self.write(to_ptr as u64, self.heap[from_st..from_end].to_vec().clone()) {
+            match self.write(to_ptr as u64, self.heap[from_st..from_end].to_vec()) {
                 Ok(()) => {},
                 Err(_) => {
                     return Err(HeapError::Write);
@@ -405,7 +405,7 @@ pub fn op_store(vm: &mut VM) {
     let r_count_ind: usize = vm.memory[(vm.ip + 3)] as usize;
 
     let val: u64 = vm.registers[r_src_ind].as_u64_bitwise();
-    let count: usize = (vm.registers[r_count_ind].as_u64() as usize).clamp(1, 7);
+    let count: usize = (vm.registers[r_count_ind].as_u64() as usize).clamp(1, 8);
 
     let ptr: u64 = vm.registers[r_dest_ind].as_u64();
     let write_vec = val.to_be_bytes();
@@ -513,6 +513,81 @@ pub fn op_memcpy(vm: &mut VM) {
             vm.exceptions_active.push(crate::exceptions::Exception::HeapSegmFault);
         }
     }
+
+    vm.ip += instr_size;
+}
+
+pub fn op_storedat(vm: &mut VM) {
+    // 0xA7, size: 4 
+    let instr_size: usize = 4;
+    // storedat Rdst rsrc rcount
+    // Copies data from data segment into the heap 
+    let rdst_ind: usize = vm.memory[(vm.ip + 1)] as usize;
+    let rsrc_ind: usize = vm.memory[(vm.ip + 2)] as usize;
+    let rcount_ind: usize = vm.memory[(vm.ip + 3)] as usize;
+
+    let to_ptr: usize = vm.registers[rdst_ind]
+        .as_u64() as usize;
+    let from_ptr: usize = vm.registers[rsrc_ind]
+        .as_u64() as usize;
+    let count: usize = vm.registers[rcount_ind]
+        .as_u64() as usize;
+    
+    let from_end = from_ptr + count;
+    if (vm.memory.len() < from_end) {
+        eprintln!("ERROR: memory len <= from_end (={:#x}) at ip = {:#x}", from_end, vm.ip);
+        vm.exceptions_active.push(crate::exceptions::Exception::MainSegmFault);
+        vm.ip += instr_size;
+        return;
+    } 
+
+    let tocopy = vm.memory[from_ptr..from_end].to_vec();
+    match vm.heap.write(to_ptr as u64, tocopy) {
+        Ok(()) => {},
+        Err(()) => {
+            eprintln!("Heap write error at IP = 0x{:x}", vm.ip);
+            vm.exceptions_active.push(crate::exceptions::Exception::HeapWriteFault);
+        }
+    }
+
+    vm.ip += instr_size;
+}
+
+pub fn op_dlbc(vm: &mut VM) {
+    // 0xA8, size: 4 
+    let instr_size: usize = 4;
+    // dlbc rdst rsrc rcount 
+    // pushes heap bytes [rsrc:(rsrc+rcount)]
+    // into main memory so it could be executed
+    // saves pointer into rdst
+    // dlbc stands for "Dynamically Load ByteCode"
+
+    let rdst_ind: usize = vm.memory[(vm.ip + 1)] as usize;
+    let rsrc_ind: usize = vm.memory[(vm.ip + 2)] as usize;
+    let rcount_ind: usize = vm.memory[(vm.ip + 3)] as usize;
+
+    let from_ptr: u64 = vm.registers[rsrc_ind].as_u64();
+    let count: u64 = vm.registers[rcount_ind].as_u64();
+
+    if vm.memory.capacity() < (vm.memory.len() + (count as usize)) {
+        eprintln!("Attempting to overflow main memory at IP = {:#x}", vm.ip);
+        vm.exceptions_active.push(crate::exceptions::Exception::MainSegmFault);
+        vm.ip += instr_size;
+        return;
+    }
+
+    let bytes = match vm.heap.read(from_ptr, count) {
+        Ok(b) => b,
+        Err(()) => {
+            eprintln!("Heap read error at ip = {:#x}", vm.ip);
+            vm.exceptions_active.push(crate::exceptions::Exception::HeapReadFault);
+            vm.ip += instr_size;
+            return;
+        } 
+    };
+
+    vm.registers[rdst_ind] = Register::ds_addr(vm.memory.len() as u64);
+    vm.memory.extend(bytes.iter());
 
     vm.ip += instr_size;
 }
