@@ -7,7 +7,12 @@ use std::{
 };
 
 use libloading::{Library, Symbol};
+use maplit::hashmap;
 use serde::Deserialize;
+
+use crate::{defnative::{getunixtime, ncall_print, randf, randint, readin, runcmd, sleepcall}, vm::InstructionHandler};
+
+pub const REPO_LINK: &str = "https://github.com/Freemorger/voxvm";
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -22,39 +27,55 @@ pub struct NativeService {
     libs: Vec<NativeLibrary>,
     platform: NSysOS,
     ncall_codes: HashMap<u16, (usize, NFuncCfg)>, // value is (lib ind, funcname)
+    pub std_calls: HashMap<u16, InstructionHandler>,
 }
 
 impl NativeService {
     pub fn new() -> NativeService {
-        #[cfg(target_os = "windows")]
-        let os = NSysOS::Windows;
 
-        #[cfg(target_os = "linux")]
-        let os = NSysOS::Linux;
-
-        #[cfg(target_os = "macos")]
-        let os = NSysOS::MacOS;
+    let os = if cfg!(target_os = "windows") {
+        NSysOS::Windows
+    } else if cfg!(target_os = "linux") {
+        NSysOS::Linux
+    } else if cfg!(target_os = "macos") {
+        NSysOS::MacOS
+    } else {
+        NSysOS::Other
+    };
 
         NativeService {
             libs: (Vec::new()),
             platform: os,
             ncall_codes: HashMap::new(),
+            std_calls: Self::get_std_calls()
         }
     }
 
-    pub fn read_cfg(&mut self, cfg_dir: &str) -> Result<(), std::io::Error> {
+    fn get_std_calls() -> HashMap<u16, InstructionHandler> {
+        hashmap! {
+            1 => ncall_print as InstructionHandler,
+            2 => readin as InstructionHandler,
+            3 => randf as InstructionHandler,
+            4 => randint as InstructionHandler,
+            5 => getunixtime as InstructionHandler,
+            6 => sleepcall as InstructionHandler,
+            7 => runcmd as InstructionHandler,
+        }
+    }
+
+    pub fn read_cfg(&mut self, cfg_dir: &str) -> Result<(), NSysError> {
         let filepaths = match get_files_in_directory(cfg_dir) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("{}", e.to_string());
-                return Err(e);
+                return Err(NSysError::fs(e));
             }
         };
 
         for filepath in filepaths {
-            let curdir = env::current_dir()?;
+            let curdir = env::current_dir().unwrap();
 
-            let cfg_s = std::fs::read_to_string(format!("{}/{}", cfg_dir, filepath))?;
+            let cfg_s = std::fs::read_to_string(format!("{}/{}", cfg_dir, filepath)).unwrap();
             let cfg: NSysCfg = match toml::from_str(&cfg_s) {
                 Ok(v) => v,
                 Err(e) => {
@@ -105,6 +126,10 @@ impl NativeService {
                         "".to_string()
                     }
                 },
+                NSysOS::Other => {
+                    eprintln!("This system isn't yet supported for non-standard native calls.\n You may contribute at {}", REPO_LINK);
+                    return Err(NSysError::UnknownOS());
+                }
             };
 
             match self.loadname(&lib_filename, cfg) {
@@ -120,6 +145,7 @@ impl NativeService {
     }
 
     pub fn call_code(&mut self, call_code: u16, args: &[VMValue]) -> Result<VMValue, NSysError> {
+
         let funcdat = match self.ncall_codes.get(&call_code) {
             Some(v) => v,
             None => {
@@ -172,6 +198,7 @@ pub enum NSysError {
     InvalidCallCode(u16),
     NoLibrary(),
     InvalidArgs(),
+    UnknownOS(),
     Other(String),
 }
 
@@ -199,6 +226,7 @@ pub enum NSysOS {
     Linux,
     MacOS,
     Windows,
+    Other,
 }
 
 type NativeFunction = unsafe extern "C" fn(

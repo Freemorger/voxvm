@@ -1,2 +1,6 @@
 todo:
-- some default ncalls
+- fix output print (runcmd)
+- some default ncalls:
+    - fs 
+    - net
+    - os

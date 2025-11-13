@@ -298,6 +298,7 @@ impl HeapBlock {
 
 pub fn op_alloc(vm: &mut VM) {
     // 0xA0, size: 10
+    let instr_size: usize = 10;
     // alloc Rdest Size_bytes
     // Attempts to allocate size bytes of memory in heap;
     // Saves ptr to allocated block if allocation was successfull
@@ -317,9 +318,8 @@ pub fn op_alloc(vm: &mut VM) {
 
     vm.registers[r_dest_ind] = Register::address(res);
     vm.reg_types[r_dest_ind] = RegTypes::address;
-
-    vm.ip += 10;
-    return;
+    
+    vm.ip += instr_size;
 }
 
 pub fn op_allocr(vm: &mut VM) {

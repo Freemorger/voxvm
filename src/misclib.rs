@@ -132,3 +132,9 @@ pub fn bytes_into_string_utf16(bytes: &[u8]) -> Option<String> {
     };
     Some(res_str)
 }
+
+pub fn show_runtime_err(vm: &mut VM, msg: &str) {
+    eprintln!("Runtime error occured! 
+        \nAt IP = {:#x}:
+        \n\t{}", vm.ip, msg);
+}

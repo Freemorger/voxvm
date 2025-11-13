@@ -1,37 +1,86 @@
 section text
 .start
-    alloc r1 28
-    dslea r2 msg 9
-    uload r3 26
+    call @currentyear
 
-    storedat r1 r2 r3
-
+    alloc r1 100
+    uload r2 98
+    call @input
+    
+    movr r3 r0
     call @print
 
-# now dlbc tests
-    
-    uload r4 0x1905ff0000000000 ; uinc r5, halt
-    uload r6 4
+    call @randf
+    movr r1 r0 
+    xor r3 r3 
+    call @print
 
-    allocr r1 r6
-    store r1 r4 r6
-    dlbc r7 r1 r6
+    iload r1 -10
+    iload r2 10 
+    call @randint 
+    movr r1 r0 
+    call @print
 
-    push r1
-    xor r3 r3
-    movr r1 r7
-    call @print ; printing addr we got from dlbc 
+    call @setenv
 
-    jmpr r7 
+    uload r1 3 
+    uload r2 1000
+    umul r1 r2
+    call @sleep ; sleeping for 3 secs
+
+    halt
 
 func print # r1 - data, r3 - heap count
-    push r2
+    push r2 
 
-    uload r2 1
+    uload r2 1 ; stdout
     ncall 1 r0
 
     pop r2
     ret
 
-section data
-    msg str "Hello, world!"
+func input # r1 - data, r2 - max to read 
+    ncall 2 r0 
+    ret
+
+func randf 
+    ncall 3 r0
+    ret
+
+func randint # r1 - low, r2 - high
+    ncall 4 r0 
+    ret
+
+func currentyear
+    ncall 5 r0 ; obtaining unix time 
+    iload r1 31536000 ; secs in a year
+    idiv r1 r0 r1 
+    
+    iload r2 1970 ; unix epoch
+    iadd r1 r2
+    call @print 
+   
+func sleep # r1 is time in millis
+    ncall 6 r0
+    ret
+    ret
+
+func setenv 
+    uload r3 36
+    allocr r1 r3
+    dslea r2 cmd 9 
+    uload r3 34
+
+    storedat r1 r2 r3
+
+    movr r2 r3
+    uload r4 150
+    allocr r3 r4
+
+    ncall 7 r0
+
+    movr r3 r0
+    call @print
+    ret
+
+section data 
+    cmd str "export HI_VOXVM=1"

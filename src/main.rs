@@ -214,7 +214,7 @@ fn main() {
             match res {
                 Ok(()) => {}
                 Err(e) => {
-                    eprintln!("ERROR While parsing native conf: {}", e.to_string());
+                    eprintln!("ERROR While parsing native conf: {:#?}", e);
                 }
             }
         }

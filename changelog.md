@@ -25,4 +25,9 @@ pre8:
 - `dlbc` instruction (dynamically load bytecode)
 - `jmpr` instruction
 - finally a pathway to v8 release. i hope so.
+pre9:
+- refactor 
+- `nsysos::other`
+- rand std ncalls
+- runcmd ncall 
 todo: todo.md

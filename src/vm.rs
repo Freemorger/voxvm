@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 
+use rand::rngs::ThreadRng;
+
 use crate::{
     callstack::CallStack,
     defnative,
@@ -55,9 +57,10 @@ pub struct VM {
     pub call_stack: CallStack,
     pub rec_depth_max: usize,
     pub exceptions_active: Vec<Exception>,
+    pub randgen: ThreadRng
 }
-type NativeFn = fn(&mut VM, &[u64]) -> Result;
-type InstructionHandler = fn(&mut VM);
+
+pub type InstructionHandler = fn(&mut VM);
 
 impl VM {
     pub fn new(
@@ -84,6 +87,7 @@ impl VM {
             rec_depth_max: max_recursion_depth,
             exceptions_active: Vec::new(),
             gc: GC::new(),
+            randgen: ThreadRng::default(),
         }
     }
     pub fn load_vvr(&mut self, input_file_name: &str) {
@@ -130,7 +134,7 @@ impl VM {
         let run_start = Instant::now();
         while (self.ip < self.memory.capacity()) && (self.running) {
             let opcode = self.memory[self.ip];
-            //println!("DBG: cur opcode: {}", self.ip);
+            //println!("DBG: cur opcode: {:#x}, IP: {:#x}", opcode, self.ip);
             Self::OPERATIONS[opcode as usize](self);
 
             if (since_cleanup >= 250) {
@@ -321,14 +325,20 @@ impl VM {
 
     fn op_ncall(&mut self) {
         // 0x1, size: 4
+        let instr_size: usize = 4;
+
         let ncall_num: u16 = args_to_u16(&self.memory[(self.ip + 1)..(self.ip + 3)]);
-        let args = &CollectRegsVMVal(&self.registers);
-        match ncall_num {
-            0x1 => {
-                defnative::ncall_print(self);
+        match self.nativesys.std_calls.get(&ncall_num) {
+            Some(v) => {
+                v(self);
+                self.ip += instr_size;
+                return;
             }
-            other => {
-                let res = self.nativesys.call_code(other, args);
+            None => {}
+        }
+
+        let args = &CollectRegsVMVal(&self.registers);
+        let res = self.nativesys.call_code(ncall_num, args);
                 match res {
                     Ok(v) => {
                         //self.registers[0] = v.data;
@@ -336,6 +346,7 @@ impl VM {
                             Some(v) => v,
                             None => {
                                 self.exceptions_active.push(Exception::InvalidDataType);
+                                self.ip += instr_size;
                                 return;
                             }
                         };
@@ -346,10 +357,7 @@ impl VM {
                         self.exceptions_active.push(Exception::NativeFault);
                     }
                 }
-            }
-        }
-        self.ip += 4;
-        return;
+        self.ip += instr_size;
     }
 
     fn op_nop(&mut self) {
@@ -1773,32 +1781,7 @@ impl VM {
         return;
     }
 
-    fn ncall_println(&mut self) {
-        // size: 4
-        let src_r_num: u8 = self.memory[self.ip + 3];
-        match self.reg_types[src_r_num as usize] {
-            RegTypes::uint64
-            | RegTypes::int64
-            | RegTypes::float64
-            | RegTypes::address
-            | RegTypes::ds_addr => {
-                println!("{}", self.registers[src_r_num as usize]);
-            }
-            RegTypes::StrAddr => {
-                let res_st: String =
-                    match string_from_straddr(self, self.registers[src_r_num as usize].as_u64()) {
-                        Some(v) => v,
-                        None => {
-                            eprintln!("ERROR: no res string!");
-                            return;
-                        }
-                    };
-                println!("{}", res_st);
-            }
-        }
-        self.ip += 4;
-        return;
-    }
+        
     pub fn coredump(&mut self) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         let zeros: Vec<u8> = vec![0; 16];
