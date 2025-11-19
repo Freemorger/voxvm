@@ -1,7 +1,7 @@
 use rand::Rng;
 
 use crate::{
-    misclib::{bytes_into_string_utf16, show_runtime_err, string_from_straddr},
+    misclib::{bytes_into_string_utf16, show_runtime_err, string_from_straddr, vec16_into_vec8},
     registers::Register,
     vm::{RegTypes, VM},
 };
@@ -195,7 +195,9 @@ pub fn runcmd(vm: &mut VM) {
     };
     
     let out = output.stdout;
-    let out_len = out.len();
+    let utf16_db: Vec<u16> = String::from_utf8_lossy(&out).encode_utf16().collect();
+    let out_bytes = vec16_into_vec8(utf16_db); 
+    let out_len = out_bytes.len();
     
     let out_ptr: u64 = vm.registers[3].as_u64();
     let maxc: usize = vm.registers[4]
@@ -203,7 +205,7 @@ pub fn runcmd(vm: &mut VM) {
         .clamp(0, out_len as u64) 
     as usize;
 
-    match vm.heap.write(out_ptr, out[0..maxc].to_owned()) {
+    match vm.heap.write(out_ptr, out_bytes[0..maxc].to_owned()) {
         Ok(()) => {},
         Err(()) => {
             show_runtime_err(vm, "Error writing stdout into heap");

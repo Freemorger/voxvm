@@ -3,17 +3,7 @@
 use rand::rngs::ThreadRng;
 
 use crate::{
-    callstack::CallStack,
-    defnative,
-    exceptions::Exception,
-    fileformats::VoxExeHeader,
-    func_ops::{op_call, op_callr, op_fnstind, op_ret},
-    gc::GC,
-    heap::{op_alloc, op_allocr, op_allocr_nogc, op_dlbc, op_free, op_load, op_memcpy, op_store, op_storedat, Heap},
-    misclib::*,
-    native::{NativeService, VMValue},
-    registers::{self, Register},
-    stack::{op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf, VMStack},
+    callstack::CallStack, defnative, exceptions::Exception, fileformats::VoxExeHeader, func_ops::{op_call, op_callr, op_fnstind, op_ret}, gc::GC, heap::{op_alloc, op_allocr, op_allocr_nogc, op_dlbc, op_free, op_load, op_memcpy, op_store, op_storedat, Heap}, misclib::*, native::{NativeService, VMValue}, nativefiles::FileController, registers::{self, Register}, stack::{op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf, VMStack}
 };
 use core::panic;
 use std::convert::TryFrom;
@@ -57,7 +47,8 @@ pub struct VM {
     pub call_stack: CallStack,
     pub rec_depth_max: usize,
     pub exceptions_active: Vec<Exception>,
-    pub randgen: ThreadRng
+    pub randgen: ThreadRng,
+    pub fc: FileController,
 }
 
 pub type InstructionHandler = fn(&mut VM);
@@ -88,6 +79,7 @@ impl VM {
             exceptions_active: Vec::new(),
             gc: GC::new(),
             randgen: ThreadRng::default(),
+            fc: FileController::new(),
         }
     }
     pub fn load_vvr(&mut self, input_file_name: &str) {

@@ -30,4 +30,9 @@ pre9:
 - `nsysos::other`
 - rand std ncalls
 - runcmd ncall 
+pre10:
+- runcmd output fix
+- `FileController`
+- ncall 0x10 (fopen)
+- ncall 0x11 (fclose)
 todo: todo.md

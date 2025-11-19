@@ -1,7 +1,7 @@
 section text
 .start
     ; test fopen
-    call @filtest
+    call @echotest
 
     halt
 
@@ -18,19 +18,32 @@ func input # r1 - data, r2 - max to read
     ncall 2 r0 
     ret
 
+   
+func sleep # r1 is time in millis
+    ncall 6 r0
+    ret
+    ret
 
-func filtest
+func echotest
     uload r3 36
     allocr r1 r3
-    dslea r2 fname 9 
-    uload r3 32
+    dslea r2 cmd 9 
+    uload r3 22
 
     storedat r1 r2 r3
 
-    movr r2 r3 
-    uload r3 1
-    ncall 0x10 r0 ; fname count mode 
+    uload r4 150
+    allocr r5 r4
+    uload r4 140
+
+    movr r2 r3
+    movr r3 r5
+    ncall 7 r0
+
+    movr r3 r0
+    movr r1 r5
+    call @print
     ret
 
 section data 
-    fname str "tools/output.txt"
+    cmd str "echo "test""

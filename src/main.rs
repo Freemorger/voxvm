@@ -15,10 +15,11 @@ mod heap;
 mod native;
 #[macro_use]
 mod registers;
-mod defnative;
 mod misclib;
 mod stack;
 mod vm;
+mod defnative;
+mod nativefiles;
 
 fn main() {
     let mut sys = System::new();

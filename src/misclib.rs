@@ -138,3 +138,11 @@ pub fn show_runtime_err(vm: &mut VM, msg: &str) {
         \nAt IP = {:#x}:
         \n\t{}", vm.ip, msg);
 }
+
+pub fn vec16_into_vec8(v: Vec<u16>) -> Vec<u8> {
+    let mut res: Vec<u8> = Vec::new();
+    for db in v {
+        res.extend_from_slice(&db.to_be_bytes());
+    }
+    res
+}

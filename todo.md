@@ -1,6 +1,6 @@
 todo:
-- fix output print (runcmd)
 - some default ncalls:
-    - fs 
+    - fs
+        - files (write, read, delete, seek)
     - net
-    - os
+- separate nativefault
