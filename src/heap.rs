@@ -535,7 +535,7 @@ pub fn op_storedat(vm: &mut VM) {
     
     let from_end = from_ptr + count;
     if (vm.memory.len() < from_end) {
-        eprintln!("ERROR: memory len <= from_end (={:#x}) at ip = {:#x}", from_end, vm.ip);
+        eprintln!("ERROR: memory len ({:#x}) <= from_end (={:#x}) at ip = {:#x}", vm.memory.len(), from_end, vm.ip);
         vm.exceptions_active.push(crate::exceptions::Exception::MainSegmFault);
         vm.ip += instr_size;
         return;

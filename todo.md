@@ -1,6 +1,6 @@
 todo:
 - some default ncalls:
-    - fs
-        - files (write, read, delete, seek)
     - net
+    - gc ncall?
+    - swap instr
 - separate nativefault

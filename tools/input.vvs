@@ -1,8 +1,6 @@
 section text
 .start
-    ; test fopen
     call @filtest
-
     halt
 
 func print # r1 - data, r3 - heap count
@@ -19,6 +17,7 @@ func input # r1 - data, r2 - max to read
     ret
 
 
+
 func filtest
     uload r3 36
     allocr r1 r3
@@ -28,9 +27,40 @@ func filtest
     storedat r1 r2 r3
 
     movr r2 r3 
-    uload r3 1
+    uload r3 4
     ncall 0x10 r0 ; fname count mode 
+
+    uload r5 4
+    allocr r4 r5
+    dslea r6 towrite 9
+    storedat r4 r6 r5
+
+    push r1 
+    push r2
+    movr r1 r0
+    movr r2 r4 
+    movr r3 r5
+    ncall 0x12 r0
+
+    push r2 
+    uload r2 0
+    ncall 0x16 r0
+    pop r2
+ 
+    allocr r7 r5 
+    movr r2 r5 
+    movr r3 r7
+    ncall 0x13 r0 
+
+    movr r1 r7
+    movr r3 r5 
+    call @print
+
+    # pop r1
+    # ncall 0x14 r0 ; would delete the file
+
     ret
 
 section data 
     fname str "tools/output.txt"
+    towrite str "hi "

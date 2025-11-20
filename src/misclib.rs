@@ -133,10 +133,11 @@ pub fn bytes_into_string_utf16(bytes: &[u8]) -> Option<String> {
     Some(res_str)
 }
 
+/// Pretty prints runtime error
 pub fn show_runtime_err(vm: &mut VM, msg: &str) {
     eprintln!("Runtime error occured! 
-        \nAt IP = {:#x}:
-        \n\t{}", vm.ip, msg);
+        \nAt IP = {:#x} (instr {:#x}):
+        \n\t{}", vm.ip, vm.memory[vm.ip], msg);
 }
 
 pub fn vec16_into_vec8(v: Vec<u16>) -> Vec<u8> {

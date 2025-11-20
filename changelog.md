@@ -35,4 +35,11 @@ pre10:
 - `FileController`
 - ncall 0x10 (fopen)
 - ncall 0x11 (fclose)
+pre11:
+- FS ncalls finished!
+    - ncall 0x12 (fwrite)
+    - ncall 0x13 (fread)
+    - ncall 0x14 (fdel)
+    - ncall 0x15 (fseekget)
+    - ncall 0x16 (fseekset)
 todo: todo.md
