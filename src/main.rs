@@ -20,6 +20,7 @@ mod stack;
 mod vm;
 mod defnative;
 mod nativefiles;
+mod nativenet;
 
 fn main() {
     let mut sys = System::new();

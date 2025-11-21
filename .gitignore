@@ -14,3 +14,5 @@ tools/input2.vvs
 tools/program2.vve
 libtestfr.o
 voxvm_err.dump
+tools/voxld.py
+tools/few
