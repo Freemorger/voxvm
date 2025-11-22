@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::{File, OpenOptions}, io::{self, Read, Seek, Write}, os::unix::fs::FileExt};
+use std::{collections::HashMap, fs::{File, OpenOptions}, io::{self, Read, Seek, Write}};
 
 use crate::{misclib::{bytes_into_string_utf16, show_runtime_err, u8_slice_to_u16_vec}, native::NSysError, registers::Register, vm::VM};
 
