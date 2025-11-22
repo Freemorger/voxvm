@@ -42,4 +42,14 @@ pre11:
     - ncall 0x14 (fdel)
     - ncall 0x15 (fseekget)
     - ncall 0x16 (fseekset)
+pre12:
+- Networking std ncalls is here:
+    - ncall 0x20 (nc_open)
+    - ncall 0x21 (nc_close)
+    - ncall 0x22 (nc_accept)
+    - ncall 0x23 (nc_write)
+    - ncall 0x24 (nc_read)
+    - ncall 0x25 (nc_getaddr)
+- `ubd` instruction for easy UTF-8 => UTF-16 convertions inside the heap
+- seems like v8 finished!
 todo: todo.md

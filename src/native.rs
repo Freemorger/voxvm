@@ -10,7 +10,7 @@ use libloading::{Library, Symbol};
 use maplit::hashmap;
 use serde::Deserialize;
 
-use crate::{defnative::{getunixtime, ncall_print, randf, randint, readin, runcmd, sleepcall}, nativefiles::{ncall_fclose, ncall_fdel, ncall_fopen, ncall_fread, ncall_fseekget, ncall_fseekset, ncall_fwrite}, vm::InstructionHandler};
+use crate::{defnative::{getunixtime, ncall_print, randf, randint, readin, runcmd, sleepcall}, nativefiles::{ncall_fclose, ncall_fdel, ncall_fopen, ncall_fread, ncall_fseekget, ncall_fseekset, ncall_fwrite}, nativenet::{ncall_nc_accept, ncall_nc_bind, ncall_nc_close, ncall_nc_getaddr, ncall_nc_read, ncall_nc_write}, vm::InstructionHandler};
 
 pub const REPO_LINK: &str = "https://github.com/Freemorger/voxvm";
 
@@ -67,6 +67,12 @@ impl NativeService {
             0x14 => ncall_fdel as InstructionHandler,
             0x15 => ncall_fseekget as InstructionHandler,
             0x16 => ncall_fseekset as InstructionHandler,
+            0x20 => ncall_nc_bind as InstructionHandler,
+            0x21 => ncall_nc_close as InstructionHandler,
+            0x22 => ncall_nc_accept as InstructionHandler,
+            0x23 => ncall_nc_write as InstructionHandler,
+            0x24 => ncall_nc_read as InstructionHandler,
+            0x25 => ncall_nc_getaddr as InstructionHandler,
         }
     }
 

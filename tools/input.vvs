@@ -1,6 +1,6 @@
 section text
 .start
-    call @filtest
+    call @testnet 
     halt
 
 func print # r1 - data, r3 - heap count
@@ -16,51 +16,56 @@ func input # r1 - data, r2 - max to read
     ncall 2 r0 
     ret
 
+func testnet
+    uload r3 40
+    allocr r2 r3
+    dslea r4 tladdr 9
+    uload r3 28
 
+    storedat r2 r4 r3 ; to from count 
 
-func filtest
-    uload r3 36
-    allocr r1 r3
-    dslea r2 fname 9 
-    uload r3 32
+    uload r1 2 
+    ncall 0x20 r0
 
-    storedat r1 r2 r3
+    uload r1 3
+    uload r4 1000
+    umul r1 r4
+    ncall 0x6 r0 ; noret 
 
-    movr r2 r3 
-    uload r3 4
-    ncall 0x10 r0 ; fname count mode 
+    push r0 
+    movr r1 r0 
+    ncall 0x22 r0 
 
-    uload r5 4
-    allocr r4 r5
-    dslea r6 towrite 9
-    storedat r4 r6 r5
+    uload r1 10
+    ncall 0x6 r0 ; wait another 10 secs
 
-    push r1 
-    push r2
+    ; reading data from peer
     movr r1 r0
-    movr r2 r4 
-    movr r3 r5
-    ncall 0x12 r0
+    uload r3 100 
+    allocr r2 r3 
+    ncall 0x24 r0
 
-    push r2 
-    uload r2 0
-    ncall 0x16 r0
-    pop r2
- 
-    allocr r7 r5 
-    movr r2 r5 
-    movr r3 r7
-    ncall 0x13 r0 
+    movr r3 r0
+    ubd r2 r3 r2
 
-    movr r1 r7
-    movr r3 r5 
+    uload r4 2 
+    umul r3 r4
+    push r1
+    movr r1 r2
     call @print
 
-    # pop r1
-    # ncall 0x14 r0 ; would delete the file
+    ; showing addr
+    pop r1
+    uload r3 50 
+    allocr r2 r3
+    ncall 0x25 r0
 
+    movr r1 r2
+    movr r3 r0 
+    call @print
+ 
     ret
 
+
 section data 
-    fname str "tools/output.txt"
-    towrite str "hi "
+    tladdr str "127.0.0.1:5095"

@@ -8,7 +8,7 @@ use rand::Rng;
 // On free: free the block, merge freed block with other free blocks nearby
 use crate::{
     gc::GcObject,
-    misclib::{args_to_f64, args_to_i64, args_to_u64, pad_to, RegTFromU32},
+    misclib::{args_to_f64, args_to_i64, args_to_u64, bytes_into_string_utf16, pad_to, show_runtime_err, vec16_into_vec8, RegTFromU32},
     registers::Register,
     vm::{RegTypes, VM},
 };
@@ -503,6 +503,7 @@ pub fn op_memcpy(vm: &mut VM) {
         .as_u64() as usize;
     let count: usize = vm.registers[rcount_ind]
         .as_u64() as usize;
+
     let src_end: usize = src_ptr + count;
     
     match vm.heap.copy(src_ptr, src_end, dst_ptr) {
@@ -588,6 +589,42 @@ pub fn op_dlbc(vm: &mut VM) {
 
     vm.registers[rdst_ind] = Register::ds_addr(vm.memory.len() as u64);
     vm.memory.extend(bytes.iter());
+
+    vm.ip += instr_size;
+}
+
+/// 0xA9, size: 4 
+/// UBD = UTF Byte into Doublebyte
+/// converts utf8 data into utf16 
+/// Rsrc_start Rcount Rdst 
+pub fn op_ubd(vm: &mut VM) {
+    let instr_size: usize = 4;
+
+    let rfirst: usize = vm.memory[vm.ip + 1] as usize;
+    let rsec: usize  = vm.memory[vm.ip + 2] as usize;
+    let rthi: usize = vm.memory[vm.ip + 3] as usize;
+
+    let from_st: u64 = vm.registers[rfirst].as_u64();
+    let src_count: u64 = vm.registers[rsec].as_u64();
+    let dst_ptr: u64 = vm.registers[rthi].as_u64();
+
+    let src_bytes: Vec<u8> = match vm.heap.read(from_st, src_count) {
+        Ok(v) => v,
+        Err(()) => {
+            show_runtime_err(vm, "Can't read heap");
+            vm.exceptions_active.push(crate::exceptions::Exception::HeapReadFault);
+            return;
+        }
+    };
+
+    let st = String::from_utf8_lossy(&src_bytes);
+    let out_bytes = vec16_into_vec8(st.encode_utf16().collect());
+
+    if let Err(()) = vm.heap.write(dst_ptr, out_bytes) {
+        show_runtime_err(vm, "Can't write heap!");
+        vm.exceptions_active.push(crate::exceptions::Exception::HeapWriteFault);
+        return;
+    };
 
     vm.ip += instr_size;
 }

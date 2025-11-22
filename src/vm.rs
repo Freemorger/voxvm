@@ -3,7 +3,7 @@
 use rand::rngs::ThreadRng;
 
 use crate::{
-    callstack::CallStack, defnative, exceptions::Exception, fileformats::VoxExeHeader, func_ops::{op_call, op_callr, op_fnstind, op_ret}, gc::GC, heap::{op_alloc, op_allocr, op_allocr_nogc, op_dlbc, op_free, op_load, op_memcpy, op_store, op_storedat, Heap}, misclib::*, native::{NativeService, VMValue}, nativefiles::FileController, registers::{self, Register}, stack::{op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf, VMStack}
+    callstack::CallStack, defnative, exceptions::Exception, fileformats::VoxExeHeader, func_ops::{op_call, op_callr, op_fnstind, op_ret}, gc::GC, heap::{op_alloc, op_allocr, op_allocr_nogc, op_dlbc, op_free, op_load, op_memcpy, op_store, op_storedat, op_ubd, Heap}, misclib::*, native::{NativeService, VMValue}, nativefiles::FileController, nativenet::NetController, registers::{self, Register}, stack::{op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf, VMStack}
 };
 use core::panic;
 use std::convert::TryFrom;
@@ -49,6 +49,7 @@ pub struct VM {
     pub exceptions_active: Vec<Exception>,
     pub randgen: ThreadRng,
     pub fc: FileController,
+    pub nc: NetController,
 }
 
 pub type InstructionHandler = fn(&mut VM);
@@ -80,6 +81,7 @@ impl VM {
             gc: GC::new(),
             randgen: ThreadRng::default(),
             fc: FileController::new(),
+            nc: NetController::new(),
         }
     }
     pub fn load_vvr(&mut self, input_file_name: &str) {
@@ -259,6 +261,7 @@ impl VM {
         handlers[0xA6] = op_memcpy as InstructionHandler;
         handlers[0xA7] = op_storedat as InstructionHandler;
         handlers[0xA8] = op_dlbc as InstructionHandler;
+        handlers[0xA9] = op_ubd as InstructionHandler;
         // ...
         handlers
     };

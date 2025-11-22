@@ -728,6 +728,7 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "memcpy".to_string() => vec![LexTypes::Op(0xA6), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
         "storedat".to_string() => vec![LexTypes::Op(0xA7), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
         "dlbc".to_string() => vec![LexTypes::Op(0xA8), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
+        "ubd".to_string() => vec![LexTypes::Op(0xA9), LexTypes::Size(4), LexTypes::Reg(0), LexTypes::Reg(0), LexTypes::Reg(0)],
     }
 }
 
