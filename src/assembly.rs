@@ -13,6 +13,7 @@ use std::{
 use crate::{fileformats::VoxExeHeader, func_ops};
 //use crate::fileformats::VoxExeHeader;
 
+#[derive(Debug, Clone, Copy)]
 enum LexTypes {
     Op(u8),
     Size(u64), // size of instr in bytes
@@ -580,6 +581,7 @@ impl VoxAssembly {
                         0
                     }
                 };
+
                 self.cur_addr += instr_size;
             }
         }

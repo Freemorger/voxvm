@@ -6,7 +6,7 @@ use crate::{
     callstack::CallStack, defnative, exceptions::Exception, fileformats::VoxExeHeader, func_ops::{op_call, op_callr, op_fnstind, op_ret}, gc::GC, heap::{op_alloc, op_allocr, op_allocr_nogc, op_dlbc, op_free, op_load, op_memcpy, op_store, op_storedat, op_ubd, Heap}, misclib::*, native::{NativeService, VMValue}, nativefiles::FileController, nativenet::NetController, registers::{self, Register}, stack::{op_gsf, op_pop, op_popall, op_push, op_pushall, op_usf, VMStack}
 };
 use core::panic;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, time::Duration};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Result,
@@ -1313,7 +1313,7 @@ impl VM {
         if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
-            self.flags[0] = 0;
+            self.flags[1] = 0;
         }
 
         self.ip += 3;
@@ -1333,7 +1333,7 @@ impl VM {
         if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
-            self.flags[0] = 0;
+            self.flags[1] = 0;
         }
 
         self.ip += 3;
@@ -1353,7 +1353,7 @@ impl VM {
         if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
-            self.flags[0] = 0;
+            self.flags[1] = 0;
         }
 
         self.ip += 3;
@@ -1373,7 +1373,7 @@ impl VM {
         if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
-            self.flags[0] = 0;
+            self.flags[1] = 0;
         }
 
         self.ip += 3;
@@ -1391,7 +1391,7 @@ impl VM {
         if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
-            self.flags[0] = 0;
+            self.flags[1] = 0;
         }
 
         self.ip += 3;
@@ -1411,7 +1411,7 @@ impl VM {
         if res.as_u64() == 0 {
             self.flags[1] = 1;
         } else {
-            self.flags[0] = 0;
+            self.flags[1] = 0;
         }
 
         self.ip += 3;

@@ -6,7 +6,7 @@
 - .vve (voxvm executable) file format
 - It's (comparably) fast :D   [10x faster than python 3.11 in my tests, at least]
 - full docs will be available ~once~ soon
-
+- Fency programming language [compiler](https://github.com/The-Fency-Project/fencyc) targets VoxVM
 ## Usage:
 ```
 voxvm --vve=filename.vve  runs a vve (voxvm executable) file
@@ -34,7 +34,7 @@ voxvm --vve=filename.vve  runs a vve (voxvm executable) file
 | functions, call stack | [X]            |
 | heap                  | [X]            |
 | GC                    | [X]            |
-| better ffi            | [~]            |
+| better ffi            | [X]            |
 | soon more..           | []             |
 
 ## Repository structure

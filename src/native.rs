@@ -178,8 +178,9 @@ impl NativeService {
         if (args.len() <= f.argc) {
             eprintln!("Invalid args!");
             return Err(NSysError::InvalidArgs());
-        }
-        let res = lib.call_foo(f.name, &args[1..f.argc], f.argc as u32); // r0 is for res
+        }   
+        let args_foo = args.get(1..f.argc).unwrap_or(&[]);
+        let res = lib.call_foo(f.name, args_foo, f.argc as u32); // r0 is for res
 
         match res {
             Ok(v) => {
