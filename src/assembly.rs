@@ -686,6 +686,7 @@ fn voxasm_instr_table() -> HashMap<String, Vec<LexTypes>> {
         "jle".to_string() => vec![LexTypes::Op(0x45), LexTypes::Size(9), LexTypes::Addr(0)],
         "jexc".to_string() => vec![LexTypes::Op(0x46), LexTypes::Size(17), LexTypes::Exception((0)), LexTypes::Addr(0)],
         "jmpr".to_string() => vec![LexTypes::Op(0x47), LexTypes::Size(2), LexTypes::Reg(0)],
+        "jnz".to_string() => vec![LexTypes::Op(0x48), LexTypes::Size(9), LexTypes::Addr(0)],
         "utoi".to_string() => vec![LexTypes::Op(0x50), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "itou".to_string() => vec![LexTypes::Op(0x51), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],
         "utof".to_string() => vec![LexTypes::Op(0x52), LexTypes::Size(3), LexTypes::Reg(0), LexTypes::Reg(0)],

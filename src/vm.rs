@@ -217,6 +217,7 @@ impl VM {
         handlers[0x45] = Self::op_jle as InstructionHandler;
         handlers[0x46] = Self::op_jexc as InstructionHandler;
         handlers[0x47] = Self::op_jmpr as InstructionHandler;
+        handlers[0x48] = Self::op_jnz as InstructionHandler;
         handlers[0x50] = Self::op_utoi as InstructionHandler;
         handlers[0x51] = Self::op_itou as InstructionHandler;
         handlers[0x52] = Self::op_utof as InstructionHandler;
@@ -1166,6 +1167,20 @@ impl VM {
         let rdst_ind: usize = self.memory[self.ip + 1] as usize;
         let addr = self.registers[rdst_ind].as_u64();
         self.ip = addr as usize;
+    }
+
+    fn op_jnz(&mut self) {
+        // 0x48, size: 9 
+        // jnz dstadddr
+        // jumps to addr if not zero 
+        if self.flags[1] == 0 {
+            let target_addr: u64 = args_to_u64(&self.memory[(self.ip + 1)..(self.ip + 9)]);
+            self.ip = target_addr as usize;
+            return;
+        } else {
+            self.ip += 9;
+            return;
+        }
     }
 
     fn op_utoi(&mut self) {

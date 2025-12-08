@@ -1,2 +1,2 @@
-v8.01 critical fix:
-- logical operations now changes correct flag
+v8.02
+- `jnz` instruction
