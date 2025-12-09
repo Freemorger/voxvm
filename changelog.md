@@ -1,2 +1,2 @@
-v8.02
-- `jnz` instruction
+v8.03
+- fix for ftou and utof

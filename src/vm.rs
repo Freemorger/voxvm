@@ -1218,7 +1218,7 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: f64 = f64::from_bits(self.registers[r_src_ind as usize].as_u64());
+        let res_val: f64 = self.registers[r_src_ind as usize].as_u64() as f64;
 
         self.registers[r_dest_ind as usize] = Register::float(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::float64;
@@ -1248,7 +1248,7 @@ impl VM {
         let r_dest_ind: u8 = self.memory[(self.ip + 1) as usize];
         let r_src_ind: u8 = self.memory[(self.ip + 2) as usize];
 
-        let res_val: u64 = self.registers[r_src_ind as usize].as_u64_bitwise();
+        let res_val: u64 = self.registers[r_src_ind as usize].as_u64();
 
         self.registers[r_dest_ind as usize] = Register::uint(res_val);
         self.reg_types[r_dest_ind as usize] = RegTypes::uint64;
